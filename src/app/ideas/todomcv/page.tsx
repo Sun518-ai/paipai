@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
+import { loadHybrid, saveHybrid } from '@/lib/feishuStore';
 
 interface Todo {
   id: string;
@@ -15,10 +16,11 @@ function genId() {
 }
 
 export default function TodoMCVPage() {
-  const [todos, setTodos] = useState<Todo[]>(() => {
-    try { const s = localStorage.getItem('paipai-todos'); if (s) return JSON.parse(s); } catch {}
-    return [];
-  });
+  const [todos, setTodos] = useState<Todo[]>([]);
+
+  useEffect(() => {
+    loadHybrid<Todo[]>('paipai-todos', []).then(setTodos);
+  }, []);
   const [input, setInput] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -30,9 +32,7 @@ export default function TodoMCVPage() {
 
   // Save to localStorage
   useEffect(() => {
-    try {
-      localStorage.setItem('paipai-todos', JSON.stringify(todos));
-    } catch {}
+    saveHybrid('paipai-todos', todos);
   }, [todos]);
 
   const addTodo = () => {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { loadHybrid, saveHybrid } from '@/lib/feishuStore';
 import Link from 'next/link';
 
 type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary';
@@ -124,13 +125,13 @@ function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }
 }
 
 export default function InsectsPage() {
-  const [insects, setInsects] = useState<Insect[]>(() => {
-    try {
-      const saved = localStorage.getItem('paipai-insects');
-      if (saved) { const p = JSON.parse(saved); if (p.length > 0) return p; }
-    } catch {}
-    return DEFAULT_INSECTS;
-  });
+  const [insects, setInsects] = useState<Insect[]>(DEFAULT_INSECTS);
+
+  useEffect(() => {
+    loadHybrid<Insect[]>('paipai-insects', DEFAULT_INSECTS).then((data) => {
+      if (data.length > 0) setInsects(data);
+    });
+  }, []);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedInsect, setSelectedInsect] = useState<Insect | null>(null);
   const [form, setForm] = useState<Partial<Insect>>({
@@ -145,7 +146,7 @@ export default function InsectsPage() {
 
   useEffect(() => {
     if (insects.length > 0) {
-      try { localStorage.setItem('paipai-insects', JSON.stringify(insects)); } catch {}
+      saveHybrid('paipai-insects', insects);
     }
   }, [insects]);
 

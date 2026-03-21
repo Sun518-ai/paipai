@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { loadHybrid, saveHybrid } from '@/lib/feishuStore';
 
 interface Photo {
   id: string;
@@ -20,10 +21,13 @@ const DEFAULT_PHOTOS: Photo[] = [
 ];
 
 export default function PhotographyPage() {
-  const [photos, setPhotos] = useState<Photo[]>(() => {
-    try { const s = localStorage.getItem('paipai-photos'); if (s) { const p = JSON.parse(s); if (p.length > 0) return p; } } catch {}
-    return DEFAULT_PHOTOS;
-  });
+  const [photos, setPhotos] = useState<Photo[]>(DEFAULT_PHOTOS);
+
+  useEffect(() => {
+    loadHybrid<Photo[]>('paipai-photos', DEFAULT_PHOTOS).then((data) => {
+      if (data.length > 0) setPhotos(data);
+    });
+  }, []);
   const [current, setCurrent] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -38,9 +42,7 @@ export default function PhotographyPage() {
 
 
   const savePhotos = useCallback((newPhotos: Photo[]) => {
-    try {
-      localStorage.setItem('paipai-photos', JSON.stringify(newPhotos));
-    } catch {}
+    saveHybrid('paipai-photos', newPhotos);
   }, []);
 
   const prev = useCallback(() => {
@@ -98,14 +100,7 @@ export default function PhotographyPage() {
         savePhotos(newPhotos);
 
         // Save the base64 image as a file
-        fetch(dataUrl)
-          .then((r) => r.blob())
-          .then((blob) => {
-            const fd = new FormData();
-            // We'll handle this differently - save base64 directly
-            // For now just use the dataUrl
-          })
-          .catch(() => {});
+        // Image saved as dataUrl in memory
 
         setCaption('');
         setShowUpload(false);

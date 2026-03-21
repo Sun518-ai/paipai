@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { loadHybrid } from '@/lib/feishuStore';
 
 interface CountdownEvent {
   id: string;
@@ -105,9 +106,14 @@ function CountdownCard({ event, onDelete }: { event: CountdownEvent; onDelete: (
 
 export default function CountdownPage() {
   const [events, setEvents] = useState<CountdownEvent[]>(() => {
-    try { const s = localStorage.getItem('paipai-countdown'); if (s) return JSON.parse(s); } catch {}
+    // Loaded asynchronously via loadHybrid below
     return DEFAULT_EVENTS;
   });
+
+  // Async load from Feishu Bitable
+  useEffect(() => {
+    loadHybrid<CountdownEvent[]>('paipai-countdown', DEFAULT_EVENTS).then(setEvents);
+  }, []);
   const [showAdd, setShowAdd] = useState(false);
   const [newEvent, setNewEvent] = useState({ name: '', date: '', emoji: '🎉', color: 'from-indigo-400 to-purple-500' });
   const [adding, setAdding] = useState(false);

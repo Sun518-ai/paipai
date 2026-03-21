@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 
-type Cell = 0 | 1 | 2; // 0=empty, 1=snake, 2=food
+
 type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
 const CELL_SIZE = 20;
@@ -26,9 +26,6 @@ export default function SnakeGamePage() {
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
   const [gameState, setGameState] = useState<'idle' | 'playing' | 'over'>('idle');
-  const [grid, setGrid] = useState<Cell[][]>(() =>
-    Array.from({ length: GRID_H }, () => Array(GRID_W).fill(0))
-  );
 
   const snakeRef = useRef<[number, number][]>([[12, 10] as [number, number]]);
   const dirRef = useRef<Direction>('RIGHT');
