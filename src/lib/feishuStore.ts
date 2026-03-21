@@ -1,50 +1,77 @@
 /**
- * 昆虫百科数据存储 — 专属飞书多维表格
- * AppToken: IhKBbv4tHamKP3sFZaGctjAsnuf
- * TableID: tblU0anuwpzYb19W
+ * 昆虫百科数据存储 — 飞书多维表格（字段对应结构）
+ * 每条昆虫 = 一条飞书记录，字段一一对应
+ * AppToken: RbB2bGUENaqvoUsJ0MQcJoQinIh
+ * TableID: tblwuTBsKwwoMir6（昆虫记录）
  */
 
-// ── 昆虫专用：飞书多维表格 ─────────────────────────────────────
+export interface Insect {
+  _recordId?: string;
+  id: string;
+  name: string;
+  type: string;
+  rarity: string;
+  description: string;
+  location: string;
+  dateFound: string;
+  photo: string;
+  stars: number;
+  notes: string;
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let cachedInsectRecordId: string | null = null;
-let insectsTimer: ReturnType<typeof setTimeout> | null = null;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function loadInsectsFromCloud(): Promise<{ insects: any[] | null; recordId: string | null }> {
+export async function loadInsectsFromCloud(): Promise<Insect[]> {
   try {
     const res = await fetch('/api/bitable');
-    if (!res.ok) return { insects: null, recordId: null };
+    if (!res.ok) return [];
     const json = await res.json();
-    if (!json.ok || !json.insects) return { insects: null, recordId: null };
-    if (json.recordId) cachedInsectRecordId = json.recordId;
-    return { insects: json.insects, recordId: json.recordId || null };
+    if (!json.ok || !json.insects) return [];
+    return json.insects as Insect[];
   } catch {
-    return { insects: null, recordId: null };
+    return [];
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function saveInsectsToCloud(insects: any[]): Promise<void> {
+export async function saveInsectToCloud(insect: Insect): Promise<void> {
+  try {
+    await fetch('/api/bitable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upsert', insect }),
+    });
+  } catch {}
+}
+
+export async function deleteInsectFromCloud(recordId: string): Promise<void> {
+  try {
+    await fetch('/api/bitable', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', recordId }),
+    });
+  } catch {}
+}
+
+export async function uploadPhotoToCloud(fileData: string, fileName: string): Promise<string> {
   try {
     const res = await fetch('/api/bitable', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ insects, recordId: cachedInsectRecordId }),
+      body: JSON.stringify({ action: 'upload_photo', fileData, fileName }),
     });
-    if (res.ok) {
-      const json = await res.json();
-      if (json.recordId) cachedInsectRecordId = json.recordId;
-    }
-  } catch {}
+    if (!res.ok) return '';
+    const json = await res.json();
+    if (!json.ok) return '';
+    return json.url || '';
+  } catch {
+    return '';
+  }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function loadInsectsHybrid(defaults: any[]): Promise<any[]> {
-  const { insects } = await loadInsectsFromCloud();
-  if (insects && insects.length > 0) {
-    localStorage.setItem('paipai-insects', JSON.stringify(insects));
-    return insects;
+export async function loadInsectsHybrid(defaults: Insect[]): Promise<Insect[]> {
+  const fromCloud = await loadInsectsFromCloud();
+  if (fromCloud.length > 0) {
+    localStorage.setItem('paipai-insects', JSON.stringify(fromCloud));
+    return fromCloud;
   }
   try {
     const saved = localStorage.getItem('paipai-insects');
@@ -53,23 +80,6 @@ export async function loadInsectsHybrid(defaults: any[]): Promise<any[]> {
   return defaults;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function saveInsectsHybrid(insects: any[]): void {
+export function saveInsectsLocal(insects: Insect[]): void {
   localStorage.setItem('paipai-insects', JSON.stringify(insects));
-  if (insectsTimer) clearTimeout(insectsTimer);
-  insectsTimer = setTimeout(() => saveInsectsToCloud(insects), 2000);
-}
-
-// ── 通用：仅本地存储（其他应用）─────────────────────────────────
-
-export async function loadHybrid<T>(localKey: string, defaultValue: T): Promise<T> {
-  try {
-    const saved = localStorage.getItem(localKey);
-    if (saved) return JSON.parse(saved);
-  } catch {}
-  return defaultValue;
-}
-
-export function saveHybrid(localKey: string, data: unknown): void {
-  try { localStorage.setItem(localKey, JSON.stringify(data)); } catch {}
 }
