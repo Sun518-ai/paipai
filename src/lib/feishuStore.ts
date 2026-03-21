@@ -53,25 +53,59 @@ export async function loadHybrid<T>(localKey: string, defaultValue: T): Promise<
 }
 
 // Save: always to localStorage immediately, debounced async sync to Bitable
+// Debounce timer reference
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingRecordId: string | null = null;
-let pendingData: Record<string, unknown> = {};
+// Track which keys have pending changes (to merge properly)
+let pendingKeys = new Set<string>();
+// Cached recordId from Bitable (to avoid re-fetching on every save)
+let cachedRecordId: string | null = null;
 
 export function saveHybrid(localKey: string, data: unknown): void {
-  // Always save locally first (instant, no network needed)
+  // Always save to localStorage immediately (this is the source of truth for local reads)
   try { localStorage.setItem(localKey, JSON.stringify(data)); } catch {}
 
-  pendingData[localKey] = data;
+  // Mark this key as pending
+  pendingKeys.add(localKey);
+
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
+    saveTimer = null;
+    const keysToSave = new Set(pendingKeys);
+    pendingKeys.clear();
+
     try {
-      if (pendingRecordId === null) {
-        const loaded = await loadAllData();
-        pendingRecordId = loaded.recordId;
-        pendingData = { ...loaded.data, ...pendingData };
+      // Build the full data object for Bitable:
+      // Start with whatever is currently in localStorage (most up-to-date local state)
+      // Then overlay the pending changes
+      const fullData: Record<string, unknown> = {};
+      const allKeys = ['paipai-insects', 'paipai-photos', 'paipai-countdown', 'paipai-todos'];
+
+      for (const key of allKeys) {
+        if (keysToSave.has(key)) {
+          // Use the pending data (just saved to localStorage)
+          try {
+            const fromLocal = localStorage.getItem(key);
+            if (fromLocal) fullData[key] = JSON.parse(fromLocal);
+          } catch {}
+        } else {
+          // Keep whatever we have in fullData (loaded from Bitable or previous iteration)
+        }
       }
-      const newId = await saveAllData(pendingRecordId, pendingData);
-      if (newId) pendingRecordId = newId;
+
+      // If we don't have cached recordId, fetch from Bitable
+      if (cachedRecordId === null) {
+        const loaded = await loadAllData();
+        cachedRecordId = loaded.recordId;
+        // Merge Bitable data for non-pending keys
+        for (const key of allKeys) {
+          if (!keysToSave.has(key) && loaded.data[key] !== undefined) {
+            fullData[key] = loaded.data[key];
+          }
+        }
+      }
+
+      const newId = await saveAllData(cachedRecordId, fullData);
+      if (newId) cachedRecordId = newId;
     } catch {}
   }, 2000);
 }
