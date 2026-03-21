@@ -28,6 +28,15 @@ export const ideas: Idea[] = [
     icon: '🐍',
   },
   {
+    id: 'photography',
+    title: '美好时光相册',
+    description: '记录妈妈和派派的温馨时刻。支持上传照片、轮播播放、左右滑动切换，相册第一张照片已就位。',
+    tags: ['React', '相册', '轮播', '本地存储'],
+    status: 'done',
+    date: '2026-03-21',
+    icon: '📷',
+  },
+  {
     id: 'countdown',
     title: '派派倒计时',
     description: '记录期待的日子！生日、节日、假期...每一个重要时刻都有倒计时陪伴。精确到秒！',
