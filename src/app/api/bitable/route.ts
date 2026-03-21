@@ -95,6 +95,14 @@ export async function GET() {
           : '',
         notes: item.fields.notes as string || '',
         photo: photoUrl,
+      photoToken: (() => {
+        const p = item.fields.photo;
+        if (!p) return '';
+        if (Array.isArray(p) && p.length > 0) {
+          return (p[0].file_token as string) || '';
+        }
+        return '';
+      })(),
       };
     });
 

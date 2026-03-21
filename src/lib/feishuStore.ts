@@ -15,6 +15,7 @@ export interface Insect {
   location: string;
   dateFound: string;
   photo: string;
+  photoToken?: string;
   stars: number;
   notes: string;
 }
