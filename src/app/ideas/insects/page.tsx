@@ -69,7 +69,7 @@ function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }
         <div className="w-full rounded-xl bg-black/20 overflow-hidden flex items-center justify-center mb-2" style={{ height: '100px' }}>
           {insect.photo ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={insect.photoToken ? `/api/photo?token=${insect.photoToken}` : insect.photo} alt={insect.name} className="w-full h-full object-cover" />
+            <img src={insect.photo} alt={insect.name} className="w-full h-full object-cover" />
           ) : (
             <span className="text-4xl opacity-40">🐛</span>
           )}
@@ -366,7 +366,7 @@ export default function InsectsPage() {
                     <div className="w-full rounded-xl bg-black/20 overflow-hidden flex items-center justify-center mb-3" style={{ height: '180px' }}>
                       {selectedInsect.photo ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={selectedInsect.photoToken ? `/api/photo?token=${selectedInsect.photoToken}` : selectedInsect.photo} alt={selectedInsect.name} className="w-full h-full object-contain" />
+                        <img src={selectedInsect.photo} alt={selectedInsect.name} className="w-full h-full object-contain" />
                       ) : (
                         <span className="text-7xl opacity-30">🐛</span>
                       )}

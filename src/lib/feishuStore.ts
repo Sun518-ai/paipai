@@ -14,8 +14,7 @@ export interface Insect {
   description: string;
   location: string;
   dateFound: string;
-  photo: string;
-  photoToken?: string;
+  photo: string; // base64 data URL: data:image/...;base64,...
   stars: number;
   notes: string;
 }
@@ -52,20 +51,11 @@ export async function deleteInsectFromCloud(recordId: string): Promise<void> {
   } catch {}
 }
 
-export async function uploadPhotoToCloud(fileData: string, fileName: string): Promise<string> {
-  try {
-    const res = await fetch('/api/bitable', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upload_photo', fileData, fileName }),
-    });
-    if (!res.ok) return '';
-    const json = await res.json();
-    if (!json.ok) return '';
-    return json.url || '';
-  } catch {
-    return '';
-  }
+export async function uploadPhotoToCloud(fileData: string, _fileName: string): Promise<string> {
+  // 直接返回 base64 data URL，不上传到飞书 Drive
+  // 前端 <img src={base64}> 可以直接渲染
+  if (fileData.startsWith('data:')) return fileData;
+  return '';
 }
 
 export async function loadInsectsHybrid(defaults: Insect[]): Promise<Insect[]> {

@@ -16,20 +16,13 @@ async function getToken(): Promise<string | null> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_id: APP_ID, app_secret: APP_SECRET }),
     });
-    if (!res.ok) {
-      console.error('Token fetch failed:', res.status, await res.text());
-      return null;
-    }
+    if (!res.ok) return null;
     const json = await res.json() as { tenant_access_token?: string; expire_in?: number };
-    if (!json.tenant_access_token) {
-      console.error('No token in response:', json);
-      return null;
-    }
+    if (!json.tenant_access_token) return null;
     tokenCache = json.tenant_access_token;
     tokenExpire = Date.now() + (json.expire_in || 7200) * 1000;
     return tokenCache;
-  } catch (e) {
-    console.error('getToken exception:', e);
+  } catch {
     return null;
   }
 }
@@ -38,26 +31,14 @@ async function bitableRequest(method: string, path: string, body?: Record<string
   const token = await getToken();
   if (!token) throw new Error('no_token');
 
-  const opts: RequestInit = {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  };
+  const opts: RequestInit = { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
 
   const res = await fetch(`https://open.feishu.cn/open-apis${path}`, opts);
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`HTTP_${res.status}:${text.slice(0, 300)}`);
-  }
+  if (!res.ok) throw new Error(`HTTP_${res.status}`);
 
   const json = await res.json() as { code?: number; msg?: string };
-  if (json.code !== undefined && json.code !== 0) {
-    throw new Error(`Feishu_${json.code}:${json.msg}`);
-  }
+  if (json.code !== undefined && json.code !== 0) throw new Error(`Feishu_${json.code}:${json.msg}`);
   return json;
 }
 
@@ -72,43 +53,24 @@ export async function GET() {
     ) as { data?: { items?: Array<{ record_id: string; fields: Record<string, unknown> }> } };
     const items = data?.data?.items || [];
 
-    const insects = items.map((item) => {
-      const photoRaw = item.fields.photo;
-      let photoUrl = '';
-      if (typeof photoRaw === 'string') {
-        photoUrl = photoRaw;
-      } else if (Array.isArray(photoRaw) && photoRaw.length > 0) {
-        const first = photoRaw[0] as Record<string, unknown>;
-        photoUrl = (first.url as string) || (first.tmp_url as string) || '';
-      }
-
-      return {
-        _recordId: item.record_id,
-        id: item.fields.name as string || '',
-        name: item.fields.name as string || '',
-        type: item.fields.type as string || '其他',
-        rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
-        description: item.fields.description as string || '',
-        location: item.fields.location as string || '',
-        dateFound: item.fields.dateFound
-          ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
-          : '',
-        notes: item.fields.notes as string || '',
-        photo: photoUrl,
-      photoToken: (() => {
-        const p = item.fields.photo;
-        if (!p) return '';
-        if (Array.isArray(p) && p.length > 0) {
-          return (p[0].file_token as string) || '';
-        }
-        return '';
-      })(),
-      };
-    });
+    const insects = items.map((item) => ({
+      _recordId: item.record_id,
+      id: item.fields.name as string || '',
+      name: item.fields.name as string || '',
+      type: item.fields.type as string || '其他',
+      rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
+      description: item.fields.description as string || '',
+      location: item.fields.location as string || '',
+      dateFound: item.fields.dateFound
+        ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
+        : '',
+      notes: item.fields.notes as string || '',
+      // photo字段: 直接返回base64字符串，前端当img src用
+      photo: (item.fields.photo as string) || '',
+    }));
 
     return NextResponse.json({ ok: true, insects });
   } catch (e) {
-    console.error('GET error:', e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
@@ -122,37 +84,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    if (body.action === 'upload_photo') {
-      const { fileData, fileName } = body as { fileData?: string; fileName?: string };
-      const token = await getToken();
-      if (!token) throw new Error('no_token');
-
-      const binary = Buffer.from((fileData || '').replace(/^data:[^,]+,/, ''), 'base64');
-      const form = new FormData();
-      form.append('file_name', fileName || 'photo.jpg');
-      form.append('parent_type', 'bitable_image');
-      form.append('parent_node', BITABLE_APP_TOKEN);
-      form.append('size', String(binary.length));
-      form.append('file', new Blob([binary]), fileName || 'photo.jpg');
-
-      const uploadRes = await fetch('https://open.feishu.cn/open-apis/drive/v1/files/upload_all', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-
-      const json = await uploadRes.json() as { code?: number; data?: { file_token?: string } };
-      if (json.code === 0 && json.data?.file_token) {
-        const tok = json.data.file_token;
-        return NextResponse.json({
-          ok: true,
-          fileToken: tok,
-          url: `https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?file_token=${tok}`,
-        });
-      }
-      throw new Error(`upload failed: code=${json.code}`);
-    }
-
     if (body.action === 'delete') {
       const { recordId } = body as { recordId?: string };
       await bitableRequest(
@@ -175,14 +106,7 @@ export async function POST(req: NextRequest) {
     if (insect.description) fields.description = insect.description;
     if (insect.location) fields.location = insect.location;
     if (insect.notes) fields.notes = insect.notes;
-
-    if (insect.photo) {
-      if (typeof insect.photo === 'string') {
-        fields.photo = insect.photo;
-      } else if (Array.isArray(insect.photo)) {
-        fields.photo = insect.photo;
-      }
-    }
+    if (insect.photo) fields.photo = insect.photo; // base64 string
 
     if (insect.dateFound) {
       const ts = new Date(insect.dateFound as string).getTime();
@@ -204,7 +128,6 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   } catch (e) {
-    console.error('POST error:', e);
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
