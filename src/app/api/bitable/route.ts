@@ -62,7 +62,16 @@ export async function GET() {
         ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
         : '',
       notes: item.fields.notes as string || '',
-      photo: item.fields.photo as string || '',
+      photo: (() => {
+        const p = item.fields.photo;
+        if (!p) return '';
+        if (typeof p === 'string') return p;
+        if (Array.isArray(p) && p.length > 0) {
+          const first = p[0] as Record<string, unknown>;
+          return (first.url as string) || (first.tmp_url as string) || '';
+        }
+        return '';
+      })(),
     }));
     return NextResponse.json({ ok: true, insects });
   } catch (e) {
@@ -128,7 +137,14 @@ export async function POST(req: NextRequest) {
     if (insect.description) fields.description = insect.description;
     if (insect.location) fields.location = insect.location;
     if (insect.notes) fields.notes = insect.notes;
-    if (insect.photo) fields.photo = insect.photo;
+    if (insect.photo) {
+      // Handle both string URL and array attachment format
+      if (typeof insect.photo === 'string') {
+        fields.photo = insect.photo;
+      } else if (Array.isArray(insect.photo)) {
+        fields.photo = insect.photo;
+      }
+    }
     if (insect.dateFound) {
       const ts = new Date(insect.dateFound as string).getTime();
       if (!isNaN(ts)) fields.dateFound = ts;
