@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { loadHybrid, saveHybrid } from '@/lib/feishuStore';
+import { loadInsectsHybrid, saveInsectsHybrid } from '@/lib/feishuStore';
 import Link from 'next/link';
 
 type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary';
@@ -128,7 +128,7 @@ export default function InsectsPage() {
   const [insects, setInsects] = useState<Insect[]>(DEFAULT_INSECTS);
 
   useEffect(() => {
-    loadHybrid<Insect[]>('paipai-insects', DEFAULT_INSECTS).then((data) => {
+    loadInsectsHybrid(DEFAULT_INSECTS).then((data) => {
       if (data.length > 0) setInsects(data);
     });
   }, []);
@@ -146,7 +146,7 @@ export default function InsectsPage() {
 
   useEffect(() => {
     if (insects.length > 0) {
-      saveHybrid('paipai-insects', insects);
+      saveInsectsHybrid(insects);
     }
   }, [insects]);
 

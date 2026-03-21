@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 // Feishu app credentials — stored in Vercel environment variables (not exposed to browser)
 const APP_ID = process.env.FEISHU_APP_ID || 'cli_a934b5afcc5d5cd3';
 const APP_SECRET = process.env.FEISHU_APP_SECRET || '3SoEuoKZbtNweBtt5O0aVdqYeilzLnqw';
-const BITABLE_APP_TOKEN = process.env.FEISHU_BITABLE_APP_TOKEN || 'RbB2bGUENaqvoUsJ0MQcJoQinIh';
-const BITABLE_TABLE_ID = process.env.FEISHU_BITABLE_TABLE_ID || 'tblJ41v89BGDT2CM';
+const BITABLE_APP_TOKEN = process.env.FEISHU_BITABLE_APP_TOKEN || 'IhKBbv4tHamKP3sFZaGctjAsnuf';
+const BITABLE_TABLE_ID = process.env.FEISHU_BITABLE_TABLE_ID || 'tblU0anuwpzYb19W';
 
 const BITABLE_FILE = 'paipai-data.json';
 
@@ -69,38 +69,39 @@ async function bitableRequest(
   });
 }
 
-async function loadAllData(): Promise<{ recordId: string | null; data: Record<string, unknown> }> {
+async function loadAllInsects(): Promise<{ recordId: string | null; insects: unknown[] }> {
   try {
     const res = await bitableRequest(
       'GET',
       `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records?page_size=10`
     );
-    if (!res.ok) return { recordId: null, data: {} };
+    if (!res.ok) return { recordId: null, insects: [] };
     const json: BitableResponse = await res.json();
     const items = json.data?.items || [];
-    if (items.length === 0) return { recordId: null, data: {} };
+    if (items.length === 0) return { recordId: null, insects: [] };
 
     const record = items[0];
     const text = record.fields?.['json_data'] as string;
-    if (!text) return { recordId: record.record_id, data: {} };
+    if (!text) return { recordId: record.record_id, insects: [] };
 
     try {
-      return { recordId: record.record_id, data: JSON.parse(text) };
+      const parsed = JSON.parse(text);
+      return { recordId: record.record_id, insects: parsed.insects || [] };
     } catch {
-      return { recordId: record.record_id, data: {} };
+      return { recordId: record.record_id, insects: [] };
     }
   } catch {
-    return { recordId: null, data: {} };
+    return { recordId: null, insects: [] };
   }
 }
 
-async function saveAllData(
+async function saveInsects(
   recordId: string | null,
-  data: Record<string, unknown>
+  insects: unknown[]
 ): Promise<string | null> {
   try {
     const payload = {
-      fields: { 'app_key': 'paipai', 'json_data': JSON.stringify(data) },
+      fields: { 'app_key': 'paipai-insects', 'json_data': JSON.stringify({ insects }) },
     };
 
     if (recordId) {
@@ -126,23 +127,25 @@ async function saveAllData(
   }
 }
 
-// GET /api/bitable — load all data
+// GET /api/bitable — load insects data
 export async function GET(_req: NextRequest) {
   try {
-    const { recordId, data } = await loadAllData();
-    return NextResponse.json({ ok: true, recordId, data });
+    const { recordId, insects } = await loadAllInsects();
+    return NextResponse.json({ ok: true, recordId, insects });
   } catch {
-    return NextResponse.json({ ok: false, error: 'Failed to load data' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Failed to load insects' }, { status: 500 });
   }
 }
 
-// POST /api/bitable — save all data
+// POST /api/bitable — save insects data
 export async function POST(req: NextRequest) {
   try {
-    const { recordId, data } = await req.json();
-    const savedRecordId = await saveAllData(recordId || null, data || {});
+    const body = await req.json();
+    const insects = body.insects || [];
+    const currentRecordId = body.recordId || null;
+    const savedRecordId = await saveInsects(currentRecordId, insects);
     return NextResponse.json({ ok: true, recordId: savedRecordId });
   } catch {
-    return NextResponse.json({ ok: false, error: 'Failed to save data' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: 'Failed to save insects' }, { status: 500 });
   }
 }
