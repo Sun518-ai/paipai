@@ -28,6 +28,15 @@ export const ideas: Idea[] = [
     icon: '🐍',
   },
   {
+    id: 'insects',
+    title: '派派昆虫百科',
+    description: '像宝可梦集卡一样收集昆虫！每个昆虫都有稀有度星级、类型、发现地点，可以拍照记录，还有派派笔记。',
+    tags: ['React', '集卡', '百科', '宝可梦风格'],
+    status: 'done',
+    date: '2026-03-21',
+    icon: '🐛',
+  },
+  {
     id: 'photography',
     title: '美好时光相册',
     description: '记录妈妈和派派的温馨时刻。支持上传照片、轮播播放、左右滑动切换，相册第一张照片已就位。',
