@@ -9,7 +9,7 @@ let tokenCache = '';
 let tokenExpire = 0;
 
 async function getToken(): Promise<string | null> {
-  if (tokenCache && Date.now() < tokenExpire - 60000) return tokenCache;
+  if (tokenCache && tokenCache.length > 0 && Date.now() < tokenExpire - 60000) return tokenCache;
   try {
     const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
       method: 'POST',
@@ -27,18 +27,24 @@ async function getToken(): Promise<string | null> {
 
 async function bitableRequest(method: string, path: string, body?: Record<string, unknown>) {
   const token = await getToken();
-  if (!token) throw new Error('no token');
+  if (!token) throw new Error('no_token');
   const res = await fetch(`https://open.feishu.cn/open-apis${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP_${res.status}:${text.slice(0, 200)}`);
+  }
   return res.json();
 }
 
 export async function GET() {
   try {
+    const RARITY_REVERSE: Record<string, string> = {
+      '普通': 'common', '稀有': 'uncommon', '珍稀': 'rare', '传说': 'legendary',
+    };
     const data = await bitableRequest(
       'GET',
       `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records?page_size=100`
@@ -49,7 +55,7 @@ export async function GET() {
       id: item.fields.name as string || '',
       name: item.fields.name as string || '',
       type: item.fields.type as string || '其他',
-      rarity: item.fields.rarity as string || '普通',
+      rarity: RARITY_REVERSE[item.fields.rarity as string] || 'common',
       description: item.fields.description as string || '',
       location: item.fields.location as string || '',
       dateFound: item.fields.dateFound
@@ -65,37 +71,35 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  let body: Record<string, unknown>;
   try {
-    const body = await req.json() as {
-      action?: string;
-      insect?: Record<string, unknown>;
-      recordId?: string;
-      fileData?: string;
-      fileName?: string;
-    };
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: 'invalid JSON' }, { status: 400 });
+  }
 
+  try {
     if (body.action === 'upload_photo') {
-      const { fileData, fileName } = body;
+      const { fileData, fileName } = body as { fileData?: string; fileName?: string };
       const token = await getToken();
-      if (!token) throw new Error('no token');
-      const binary = Buffer.from(fileData?.replace(/^data:[^,]+,/, '') || '', 'base64');
-      const formData = new FormData();
-      formData.append('file_name', fileName || 'photo.jpg');
-      formData.append('parent_type', 'bitable_image');
-      formData.append('parent_node', BITABLE_APP_TOKEN);
-      formData.append('size', String(binary.length));
-      formData.append('file', new Blob([binary]), fileName || 'photo.jpg');
+      if (!token) throw new Error('no_token');
+      const binary = Buffer.from((fileData || '').replace(/^data:[^,]+,/, ''), 'base64');
+      const form = new FormData();
+      form.append('file_name', fileName || 'photo.jpg');
+      form.append('parent_type', 'bitable_image');
+      form.append('parent_node', BITABLE_APP_TOKEN);
+      form.append('size', String(binary.length));
+      form.append('file', new Blob([binary]), fileName || 'photo.jpg');
       const uploadRes = await fetch('https://open.feishu.cn/open-apis/drive/v1/files/upload_all', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        body: form,
       });
-      const uploadJson = await uploadRes.json() as { code?: number; data?: { file_token?: string } };
-      if (uploadJson.code === 0 && uploadJson.data?.file_token) {
-        const tok = uploadJson.data.file_token;
+      const json = await uploadRes.json() as { code?: number; data?: { file_token?: string } };
+      if (json.code === 0 && json.data?.file_token) {
+        const tok = json.data.file_token;
         return NextResponse.json({
-          ok: true,
-          fileToken: tok,
+          ok: true, fileToken: tok,
           url: `https://internal-api-drive-stream.feishu.cn/space/api/box/stream/download/authcode/?file_token=${tok}`,
         });
       }
@@ -103,33 +107,37 @@ export async function POST(req: NextRequest) {
     }
 
     if (body.action === 'delete') {
+      const { recordId } = body as { recordId?: string };
       await bitableRequest(
         'DELETE',
-        `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records/${body.recordId}`
+        `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records/${recordId}`
       );
       return NextResponse.json({ ok: true });
     }
 
     // upsert insect
-    const insect = body.insect || {};
-    const recordId = insect._recordId as string;
-    const fields: Record<string, unknown> = {
-      name: insect.name || '',
-      type: insect.type || '其他',
-      rarity: insect.rarity || '普通',
-      description: insect.description || '',
-      location: insect.location || '',
-      notes: insect.notes || '',
-      photo: insect.photo || '',
+    const insect = (body.insect || {}) as Record<string, unknown>;
+    const RARITY_MAP: Record<string, string> = {
+      common: '普通', uncommon: '稀有', rare: '珍稀', legendary: '传说',
     };
+
+    const fields: Record<string, unknown> = {};
+    if (insect.name) fields.name = insect.name;
+    if (insect.type) fields.type = insect.type;
+    if (insect.rarity) fields.rarity = RARITY_MAP[insect.rarity as string] || insect.rarity;
+    if (insect.description) fields.description = insect.description;
+    if (insect.location) fields.location = insect.location;
+    if (insect.notes) fields.notes = insect.notes;
+    if (insect.photo) fields.photo = insect.photo;
     if (insect.dateFound) {
-      fields.dateFound = new Date(insect.dateFound as string).getTime();
+      const ts = new Date(insect.dateFound as string).getTime();
+      if (!isNaN(ts)) fields.dateFound = ts;
     }
 
-    if (recordId) {
+    if (insect._recordId) {
       await bitableRequest(
         'PUT',
-        `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records/${recordId}`,
+        `/bitable/v1/apps/${BITABLE_APP_TOKEN}/tables/${BITABLE_TABLE_ID}/records/${insect._recordId}`,
         { fields }
       );
     } else {
