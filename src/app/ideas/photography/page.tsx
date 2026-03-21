@@ -20,7 +20,10 @@ const DEFAULT_PHOTOS: Photo[] = [
 ];
 
 export default function PhotographyPage() {
-  const [photos, setPhotos] = useState<Photo[]>(DEFAULT_PHOTOS);
+  const [photos, setPhotos] = useState<Photo[]>(() => {
+    try { const s = localStorage.getItem('paipai-photos'); if (s) { const p = JSON.parse(s); if (p.length > 0) return p; } } catch {}
+    return DEFAULT_PHOTOS;
+  });
   const [current, setCurrent] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
@@ -31,17 +34,8 @@ export default function PhotographyPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('paipai-photos');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0) {
-          setPhotos(parsed);
-        }
-      }
-    } catch {}
-  }, []);
+  // Loaded via lazy init
+
 
   const savePhotos = useCallback((newPhotos: Photo[]) => {
     try {

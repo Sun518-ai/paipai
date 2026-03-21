@@ -15,17 +15,16 @@ function genId() {
 }
 
 export default function TodoMCVPage() {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    try { const s = localStorage.getItem('paipai-todos'); if (s) return JSON.parse(s); } catch {}
+    return [];
+  });
   const [input, setInput] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Load from localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('paipai-todos');
-      if (saved) setTodos(JSON.parse(saved));
-    } catch {}
     inputRef.current?.focus();
   }, []);
 

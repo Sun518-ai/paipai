@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 interface CountdownEvent {
@@ -38,7 +38,7 @@ function getTimeLeft(targetDate: string) {
 }
 
 function CountdownCard({ event, onDelete }: { event: CountdownEvent; onDelete: (id: string) => void }) {
-  const [timeLeft, setTimeLeft] = useState(getTimeLeft(event.date));
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(event.date));
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -104,17 +104,13 @@ function CountdownCard({ event, onDelete }: { event: CountdownEvent; onDelete: (
 }
 
 export default function CountdownPage() {
-  const [events, setEvents] = useState<CountdownEvent[]>(DEFAULT_EVENTS);
+  const [events, setEvents] = useState<CountdownEvent[]>(() => {
+    try { const s = localStorage.getItem('paipai-countdown'); if (s) return JSON.parse(s); } catch {}
+    return DEFAULT_EVENTS;
+  });
   const [showAdd, setShowAdd] = useState(false);
   const [newEvent, setNewEvent] = useState({ name: '', date: '', emoji: '🎉', color: 'from-indigo-400 to-purple-500' });
   const [adding, setAdding] = useState(false);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('paipai-countdown');
-      if (saved) setEvents(JSON.parse(saved));
-    } catch {}
-  }, []);
 
   useEffect(() => {
     try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 
 type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary';
@@ -124,7 +124,13 @@ function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }
 }
 
 export default function InsectsPage() {
-  const [insects, setInsects] = useState<Insect[]>([]);
+  const [insects, setInsects] = useState<Insect[]>(() => {
+    try {
+      const saved = localStorage.getItem('paipai-insects');
+      if (saved) { const p = JSON.parse(saved); if (p.length > 0) return p; }
+    } catch {}
+    return DEFAULT_INSECTS;
+  });
   const [showAdd, setShowAdd] = useState(false);
   const [selectedInsect, setSelectedInsect] = useState<Insect | null>(null);
   const [form, setForm] = useState<Partial<Insect>>({
@@ -135,29 +141,11 @@ export default function InsectsPage() {
   const [uploading, setUploading] = useState(false);
   const [filterType, setFilterType] = useState<BugType | '全部'>('全部');
   const [filterRarity, setFilterRarity] = useState<Rarity | '全部'>('全部');
-  const [view, setView] = useState<'cards' | 'list'>('cards');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('paipai-insects');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0) setInsects(parsed);
-        else setInsects(DEFAULT_INSECTS);
-      } else {
-        setInsects(DEFAULT_INSECTS);
-      }
-    } catch {
-      setInsects(DEFAULT_INSECTS);
-    }
-  }, []);
-
-  useEffect(() => {
     if (insects.length > 0) {
-      try {
-        localStorage.setItem('paipai-insects', JSON.stringify(insects));
-      } catch {}
+      try { localStorage.setItem('paipai-insects', JSON.stringify(insects)); } catch {}
     }
   }, [insects]);
 
