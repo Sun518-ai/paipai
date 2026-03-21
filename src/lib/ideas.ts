@@ -27,4 +27,13 @@ export const ideas: Idea[] = [
     date: '2026-03-21',
     icon: '🐍',
   },
+  {
+    id: 'countdown',
+    title: '派派倒计时',
+    description: '记录期待的日子！生日、节日、假期...每一个重要时刻都有倒计时陪伴。精确到秒！',
+    tags: ['React', '倒计时', '本地存储'],
+    status: 'done',
+    date: '2026-03-21',
+    icon: '⏰',
+  },
 ];
