@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { loadHybrid } from '@/lib/feishuStore';
+import { loadHybrid, saveHybrid } from '@/lib/localStore';
 
 interface CountdownEvent {
   id: string;

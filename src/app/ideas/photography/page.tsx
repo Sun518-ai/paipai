@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { loadHybrid, saveHybrid } from '@/lib/feishuStore';
+import { loadHybrid, saveHybrid } from '@/lib/localStore';;
 
 interface Photo {
   id: string;
