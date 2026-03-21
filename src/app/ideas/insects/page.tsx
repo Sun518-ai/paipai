@@ -362,7 +362,7 @@ export default function InsectsPage() {
                   ref={fileRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
+                  
                   onChange={handlePhoto}
                   className="hidden"
                 />
