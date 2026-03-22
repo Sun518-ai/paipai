@@ -9,15 +9,6 @@ export interface Idea {
 }
 
 export const ideas: Idea[] = [
-  {
-    id: 'sounds',
-    title: '派派听听乐',
-    description: '🎵 听声音猜答案！15种有趣的声音等你来挑战！车车、动物、大自然...听听看是什么？答对了有彩纸庆祝哦！',
-    tags: ['游戏', '声音', '猜谜', '音乐', '儿童'],
-    status: 'done',
-    date: '2026-03-22',
-    icon: '🎵',
-  },
 
   {
     id: 'todomcv',
