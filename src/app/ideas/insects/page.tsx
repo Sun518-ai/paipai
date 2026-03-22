@@ -90,6 +90,7 @@ export default function InsectsPage() {
   const [insects, setInsects] = useState<Insect[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedInsect, setSelectedInsect] = useState<Insect | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // null=新增, string=编辑
   const [form, setForm] = useState<Partial<Insect>>({
     name: '', type: '甲虫', rarity: 'common', description: '', location: '',
     dateFound: new Date().toISOString().split('T')[0], photo: '', notes: '',
@@ -146,35 +147,91 @@ export default function InsectsPage() {
   const handleAdd = async () => {
     if (!form.name?.trim()) return;
     const stars = rarityMap[form.rarity || 'common'] || 1;
-
-    // photo is already a file_token (uploaded in handlePhoto)
     const photoUrl = form.photo || '';
 
-    const newInsect: Insect = {
-      _recordId: '',
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      name: form.name!,
-      type: (form.type as BugType) || '其他',
-      rarity: (form.rarity as Rarity) || 'common',
-      description: form.description || '',
-      location: form.location || '',
-      dateFound: form.dateFound || new Date().toISOString().split('T')[0],
-      photo: photoUrl,
-      stars,
-      notes: form.notes || '',
-    };
-
-    const updated = [...insects, newInsect];
-    setInsects(updated);
-    saveInsectsLocal(updated);
-
-    // Save to cloud (async)
-    await import('@/lib/feishuStore').then(({ saveInsectToCloud }) => {
-      saveInsectToCloud(newInsect);
-    });
+    if (editingId) {
+      // 编辑模式：更新已有记录
+      const existing = insects.find((i) => i.id === editingId);
+      const updatedInsect: Insect = {
+        ...(existing || {}),
+        _recordId: existing?._recordId,
+        id: editingId,
+        name: form.name!,
+        type: (form.type as BugType) || '其他',
+        rarity: (form.rarity as Rarity) || 'common',
+        description: form.description || '',
+        location: form.location || '',
+        dateFound: form.dateFound || '',
+        photo: photoUrl,
+        stars,
+        notes: form.notes || '',
+      };
+      const updated = insects.map((i) => i.id === editingId ? updatedInsect : i);
+      setInsects(updated);
+      saveInsectsLocal(updated);
+      await import('@/lib/feishuStore').then(({ saveInsectToCloud }) => {
+        saveInsectToCloud(updatedInsect);
+      });
+    } else {
+      // 新增模式
+      const newInsect: Insect = {
+        _recordId: '',
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+        name: form.name!,
+        type: (form.type as BugType) || '其他',
+        rarity: (form.rarity as Rarity) || 'common',
+        description: form.description || '',
+        location: form.location || '',
+        dateFound: form.dateFound || new Date().toISOString().split('T')[0],
+        photo: photoUrl,
+        stars,
+        notes: form.notes || '',
+      };
+      const updated = [...insects, newInsect];
+      setInsects(updated);
+      saveInsectsLocal(updated);
+      await import('@/lib/feishuStore').then(({ saveInsectToCloud }) => {
+        saveInsectToCloud(newInsect);
+      });
+    }
 
     setForm({ name: '', type: '甲虫', rarity: 'common', description: '', location: '', dateFound: new Date().toISOString().split('T')[0], photo: '', notes: '' });
     setShowAdd(false);
+    setEditingId(null);
+  };
+
+  /** 从已有记录编辑 */
+  const handleEdit = (insect: Insect) => {
+    setForm({
+      name: insect.name,
+      type: insect.type as BugType,
+      rarity: insect.rarity as Rarity,
+      description: insect.description,
+      location: insect.location,
+      dateFound: insect.dateFound,
+      photo: insect.photo,
+      notes: insect.notes,
+    });
+    setEditingId(insect.id);
+    setSelectedInsect(null);
+    setShowAdd(true);
+  };
+
+  /** 获取浏览器当前位置 */
+  const getLocation = () => {
+    if (!navigator.geolocation) {
+      alert('浏览器不支持定位');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((f) => ({
+          ...f,
+          location: `${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`,
+        }));
+      },
+      () => { alert('获取位置失败，请检查定位权限'); }
+    );
   };
 
   const handleDelete = async (id: string) => {
@@ -238,7 +295,7 @@ export default function InsectsPage() {
 
         <div className="flex justify-between items-center mb-6">
           <p className="text-sm text-gray-400">找到 {filtered.length} 种小虫子</p>
-          <button onClick={() => setShowAdd(!showAdd)}
+          <button onClick={() => { setShowAdd(!showAdd); if (showAdd) setEditingId(null); }}
             className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full text-sm font-bold shadow-lg transition-all flex items-center gap-2">
             {showAdd ? '✕ 取消' : '➕ 记录新昆虫'}
           </button>
@@ -246,7 +303,7 @@ export default function InsectsPage() {
 
         {showAdd && (
           <div className="bg-white rounded-3xl border border-gray-100 p-6 mb-6 shadow-sm">
-            <h3 className="font-black text-gray-800 mb-4">📓 记录新昆虫</h3>
+            <h3 className="font-black text-gray-800 mb-4">{editingId ? '✏️ 编辑昆虫' : '📓 记录新昆虫'}</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-gray-500 font-medium">名字 *</label>
@@ -272,9 +329,16 @@ export default function InsectsPage() {
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-medium">发现地点</label>
-                <input value={form.location || ''} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                  placeholder="比如：公园草丛"
-                  className="w-full mt-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                <div className="flex gap-2 mt-1">
+                  <input value={form.location || ''} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                    placeholder="比如：公园草丛"
+                    className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                  <button type="button" onClick={getLocation}
+                    className="px-3 py-2 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-50 text-sm font-medium transition-colors"
+                    title="获取当前位置">
+                    📍
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-xs text-gray-500 font-medium">发现日期</label>
@@ -316,7 +380,7 @@ export default function InsectsPage() {
             </div>
             <button onClick={handleAdd} disabled={!form.name?.trim() || uploading}
               className="mt-5 w-full py-3 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold rounded-xl transition-colors shadow">
-              🌟 收入昆虫百科
+              🌟 {editingId ? '保存修改' : '收入昆虫百科'}
             </button>
           </div>
         )}
@@ -397,6 +461,10 @@ export default function InsectsPage() {
                     )}
                   </div>
                   <div className="flex gap-3 mt-5">
+                    <button onClick={() => handleEdit(selectedInsect)}
+                      className="flex-1 py-2.5 bg-emerald-100 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-200 transition-colors">
+                      ✏️ 编辑
+                    </button>
                     <button onClick={() => handleDelete(selectedInsect.id)}
                       className="flex-1 py-2.5 border border-red-200 text-red-500 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors">
                       🗑️ 删除
