@@ -30,13 +30,10 @@ async function getToken(): Promise<string | null> {
 async function bitableRequest(method: string, path: string, body?: Record<string, unknown>) {
   const token = await getToken();
   if (!token) throw new Error('no_token');
-
   const opts: RequestInit = { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-
   const res = await fetch(`https://open.feishu.cn/open-apis${path}`, opts);
   if (!res.ok) throw new Error(`HTTP_${res.status}`);
-
   const json = await res.json() as { code?: number; msg?: string };
   if (json.code !== undefined && json.code !== 0) throw new Error(`Feishu_${json.code}:${json.msg}`);
   return json;
@@ -53,36 +50,21 @@ export async function GET() {
     ) as { data?: { items?: Array<{ record_id: string; fields: Record<string, unknown> }> } };
     const items = data?.data?.items || [];
 
-    const insects = items.map((item) => {
-      // Parse photo field: attachment array → file_token string
-      // backwards compat: if it's a plain string (base64 or file_token), use as-is
-      let photo = '';
-      const rawPhoto = item.fields.photo;
-      if (rawPhoto) {
-        if (typeof rawPhoto === 'string') {
-          photo = rawPhoto;
-        } else if (Array.isArray(rawPhoto) && rawPhoto.length > 0) {
-          const first = rawPhoto[0] as Record<string, unknown>;
-          // Extract file_token from attachment
-          photo = `file_token:${first.file_token || ''}`;
-        }
-      }
-
-      return {
-        _recordId: item.record_id,
-        id: item.fields.name as string || '',
-        name: item.fields.name as string || '',
-        type: item.fields.type as string || '其他',
-        rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
-        description: item.fields.description as string || '',
-        location: item.fields.location as string || '',
-        dateFound: item.fields.dateFound
-          ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
-          : '',
-        notes: item.fields.notes as string || '',
-        photo,
-      };
-    });
+    const insects = items.map((item) => ({
+      _recordId: item.record_id,
+      id: item.fields.name as string || '',
+      name: item.fields.name as string || '',
+      type: item.fields.type as string || '其他',
+      rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
+      description: item.fields.description as string || '',
+      location: item.fields.location as string || '',
+      dateFound: item.fields.dateFound
+        ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
+        : '',
+      notes: item.fields.notes as string || '',
+      // photo: 从 photoToken 文本字段读取 file_token
+      photo: (item.fields.photoToken as string) || '',
+    }));
 
     return NextResponse.json({ ok: true, insects });
   } catch (e) {
@@ -108,36 +90,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === 'upload_photo') {
-      const { fileData, fileName } = body as { fileData?: string; fileName?: string };
-      const token = await getToken();
-      if (!token) throw new Error('no_token');
-
-      // Decode base64 to binary
-      const base64Data = (fileData || '').replace(/^data:[^,]+,/, '');
-      const binary = Buffer.from(base64Data, 'base64');
-
-      const form = new FormData();
-      form.append('file_name', fileName || 'photo.jpg');
-      form.append('parent_type', 'bitable_image');
-      form.append('parent_node', BITABLE_APP_TOKEN);
-      form.append('size', String(binary.length));
-      form.append('file', new Blob([binary]), fileName || 'photo.jpg');
-
-      const uploadRes = await fetch('https://open.feishu.cn/open-apis/drive/v1/files/upload_all', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-
-      const json = await uploadRes.json() as { code?: number; data?: { file_token?: string } };
-      if (json.code === 0 && json.data?.file_token) {
-        return NextResponse.json({ ok: true, fileToken: json.data.file_token });
-      }
-      throw new Error(`upload failed: code=${json.code}`);
-    }
-
-    // upsert insect
+    // upsert insect — photo 存到 photoToken 文本字段
     const insect = (body.insect || {}) as Record<string, unknown>;
     const RARITY_MAP: Record<string, string> = {
       common: '普通', uncommon: '稀有', rare: '珍稀', legendary: '传说',
@@ -150,24 +103,13 @@ export async function POST(req: NextRequest) {
     if (insect.description) fields.description = insect.description;
     if (insect.location) fields.location = insect.location;
     if (insect.notes) fields.notes = insect.notes;
-
-    // dateFound
     if (insect.dateFound) {
       const ts = new Date(insect.dateFound as string).getTime();
       if (!isNaN(ts)) fields.dateFound = ts;
     }
-
-    // photo: attachment array if file_token, base64 string if legacy
+    // photo: 存入 photoToken 文本字段（直接存 file_token 字符串）
     const photo = insect.photo as string;
-    if (photo) {
-      if (photo.startsWith('file_token:')) {
-        const fileToken = photo.replace('file_token:', '');
-        fields.photo = [{ file_token: fileToken }];
-      } else {
-        // legacy base64
-        fields.photo = photo;
-      }
-    }
+    if (photo) fields.photoToken = photo;
 
     if (insect._recordId) {
       await bitableRequest(

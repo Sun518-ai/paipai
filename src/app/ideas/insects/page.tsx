@@ -41,14 +41,8 @@ const rarityMap: Record<string, number> = {
 function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }) {
   const cfg = RARITY_CONFIG[insect.rarity as Rarity] || RARITY_CONFIG.common;
 
-  // Resolve photo URL: file_token → /api/photo proxy, base64 → as-is
-  const photoUrl = (() => {
-    if (!insect.photo) return '';
-    if (insect.photo.startsWith('file_token:')) {
-      return `/api/photo?token=${encodeURIComponent(insect.photo.replace('file_token:', ''))}`;
-    }
-    return insect.photo; // base64 or legacy URL
-  })();
+  // photo: 直接是 file_token 字符串，用 /api/photo 代理显示
+  const photoUrl = insect.photo ? `/api/photo?token=${encodeURIComponent(insect.photo)}` : '';
 
   return (
     <div
@@ -135,29 +129,26 @@ export default function InsectsPage() {
     types: new Set(insects.map((i) => i.type)).size,
   };
 
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setForm((f) => ({ ...f, photo: ev.target?.result as string }));
+    try {
+      const token = await uploadPhotoToCloud(file);
+      if (token) {
+        setForm((f) => ({ ...f, photo: token }));
+      }
+    } finally {
       setUploading(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleAdd = async () => {
     if (!form.name?.trim()) return;
     const stars = rarityMap[form.rarity || 'common'] || 1;
 
-    // Upload photo first if exists as base64
-    let photoUrl = form.photo || '';
-    if (form.photo && form.photo.startsWith('data:')) {
-      setUploading(true);
-      photoUrl = await uploadPhotoToCloud(form.photo, `insect_${Date.now()}.jpg`);
-      setUploading(false);
-    }
+    // photo is already a file_token (uploaded in handlePhoto)
+    const photoUrl = form.photo || '';
 
     const newInsect: Insect = {
       _recordId: '',
@@ -311,7 +302,7 @@ export default function InsectsPage() {
                   className="mt-1 border-2 border-dashed border-emerald-200 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/50 transition-all">
                   {form.photo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={form.photo} alt="preview" className="w-full max-h-40 object-contain rounded-lg" />
+                    <img src={`/api/photo?token=${encodeURIComponent(form.photo)}`} alt="preview" className="w-full max-h-40 object-contain rounded-lg" />
                   ) : (
                     <>
                       <span className="text-3xl mb-2">{uploading ? '⏳' : '📷'}</span>
@@ -362,17 +353,12 @@ export default function InsectsPage() {
                       ))}
                     </div>
                     <div className="w-full rounded-xl bg-black/20 overflow-hidden flex items-center justify-center mb-3" style={{ height: '180px' }}>
-                      {(() => {
-                        const url = selectedInsect.photo.startsWith('file_token:')
-                          ? `/api/photo?token=${encodeURIComponent(selectedInsect.photo.replace('file_token:', ''))}`
-                          : selectedInsect.photo;
-                        return url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={url} alt={selectedInsect.name} className="w-full h-full object-contain" />
-                        ) : (
-                          <span className="text-7xl opacity-30">🐛</span>
-                        );
-                      })()}
+                      {selectedInsect.photo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={`/api/photo?token=${encodeURIComponent(selectedInsect.photo)}`} alt={selectedInsect.name} className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-7xl opacity-30">🐛</span>
+                      )}
                     </div>
                     <div className="text-center">
                       <div className="inline-block px-3 py-1 rounded-full text-xs font-bold mb-2" style={{ backgroundColor: cfg.color }}>

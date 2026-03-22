@@ -1,6 +1,6 @@
 /**
  * 昆虫百科数据存储 — 飞书多维表格
- * photo 存储: file_token 字符串 (格式: "file_token:xxx")
+ * photo 存储: file_token 字符串，写入 photoToken 文本字段
  * 前端显示: /api/photo?token=xxx → 代理飞书图片
  */
 
@@ -13,7 +13,7 @@ export interface Insect {
   description: string;
   location: string;
   dateFound: string;
-  /** file_token string (file_token:xxx) or base64 legacy data URL */
+  /** file_token 字符串，前端显示用 /api/photo?token=xxx */
   photo: string;
   stars: number;
   notes: string;
@@ -53,30 +53,20 @@ export async function deleteInsectFromCloud(recordId: string): Promise<void> {
 
 /**
  * 上传照片到飞书 Drive，返回 file_token 字符串
- * 失败时返回空字符串（前端降级为 base64 或不显示图片）
+ * 使用 FormData 上传，绕过 base64 JSON 大小限制
  */
-export async function uploadPhotoToCloud(fileData: string, fileName: string): Promise<string> {
-  // 已经是 file_token 格式，直接返回
-  if (fileData.startsWith('file_token:')) return fileData;
-  // 已经是完整URL，跳过
-  if (fileData.startsWith('http')) return fileData;
-  // base64 data URL → 上传到飞书 Drive
-  if (fileData.startsWith('data:')) {
-    try {
-      const res = await fetch('/api/bitable', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upload_photo', fileData, fileName }),
-      });
-      if (!res.ok) return '';
-      const json = await res.json();
-      if (!json.ok || !json.fileToken) return '';
-      return `file_token:${json.fileToken}`;
-    } catch {
-      return '';
-    }
+export async function uploadPhotoToCloud(file: File): Promise<string> {
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/upload', { method: 'POST', body: form });
+    if (!res.ok) return '';
+    const json = await res.json();
+    if (!json.ok || !json.fileToken) return '';
+    return json.fileToken as string;
+  } catch {
+    return '';
   }
-  return '';
 }
 
 export async function loadInsectsHybrid(defaults: Insect[]): Promise<Insect[]> {
