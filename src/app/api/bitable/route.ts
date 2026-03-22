@@ -53,21 +53,36 @@ export async function GET() {
     ) as { data?: { items?: Array<{ record_id: string; fields: Record<string, unknown> }> } };
     const items = data?.data?.items || [];
 
-    const insects = items.map((item) => ({
-      _recordId: item.record_id,
-      id: item.fields.name as string || '',
-      name: item.fields.name as string || '',
-      type: item.fields.type as string || '其他',
-      rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
-      description: item.fields.description as string || '',
-      location: item.fields.location as string || '',
-      dateFound: item.fields.dateFound
-        ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
-        : '',
-      notes: item.fields.notes as string || '',
-      // photo字段: 直接返回base64字符串，前端当img src用
-      photo: (item.fields.photo as string) || '',
-    }));
+    const insects = items.map((item) => {
+      // Parse photo field: attachment array → file_token string
+      // backwards compat: if it's a plain string (base64 or file_token), use as-is
+      let photo = '';
+      const rawPhoto = item.fields.photo;
+      if (rawPhoto) {
+        if (typeof rawPhoto === 'string') {
+          photo = rawPhoto;
+        } else if (Array.isArray(rawPhoto) && rawPhoto.length > 0) {
+          const first = rawPhoto[0] as Record<string, unknown>;
+          // Extract file_token from attachment
+          photo = `file_token:${first.file_token || ''}`;
+        }
+      }
+
+      return {
+        _recordId: item.record_id,
+        id: item.fields.name as string || '',
+        name: item.fields.name as string || '',
+        type: item.fields.type as string || '其他',
+        rarity: RARITY_REVERSE[item.fields.rarity as string] || (item.fields.rarity as string) || 'common',
+        description: item.fields.description as string || '',
+        location: item.fields.location as string || '',
+        dateFound: item.fields.dateFound
+          ? new Date(item.fields.dateFound as number).toISOString().split('T')[0]
+          : '',
+        notes: item.fields.notes as string || '',
+        photo,
+      };
+    });
 
     return NextResponse.json({ ok: true, insects });
   } catch (e) {
@@ -93,6 +108,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
+    if (body.action === 'upload_photo') {
+      const { fileData, fileName } = body as { fileData?: string; fileName?: string };
+      const token = await getToken();
+      if (!token) throw new Error('no_token');
+
+      // Decode base64 to binary
+      const base64Data = (fileData || '').replace(/^data:[^,]+,/, '');
+      const binary = Buffer.from(base64Data, 'base64');
+
+      const form = new FormData();
+      form.append('file_name', fileName || 'photo.jpg');
+      form.append('parent_type', 'bitable_image');
+      form.append('parent_node', BITABLE_APP_TOKEN);
+      form.append('size', String(binary.length));
+      form.append('file', new Blob([binary]), fileName || 'photo.jpg');
+
+      const uploadRes = await fetch('https://open.feishu.cn/open-apis/drive/v1/files/upload_all', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+
+      const json = await uploadRes.json() as { code?: number; data?: { file_token?: string } };
+      if (json.code === 0 && json.data?.file_token) {
+        return NextResponse.json({ ok: true, fileToken: json.data.file_token });
+      }
+      throw new Error(`upload failed: code=${json.code}`);
+    }
+
     // upsert insect
     const insect = (body.insect || {}) as Record<string, unknown>;
     const RARITY_MAP: Record<string, string> = {
@@ -106,11 +150,23 @@ export async function POST(req: NextRequest) {
     if (insect.description) fields.description = insect.description;
     if (insect.location) fields.location = insect.location;
     if (insect.notes) fields.notes = insect.notes;
-    if (insect.photo) fields.photo = insect.photo; // base64 string
 
+    // dateFound
     if (insect.dateFound) {
       const ts = new Date(insect.dateFound as string).getTime();
       if (!isNaN(ts)) fields.dateFound = ts;
+    }
+
+    // photo: attachment array if file_token, base64 string if legacy
+    const photo = insect.photo as string;
+    if (photo) {
+      if (photo.startsWith('file_token:')) {
+        const fileToken = photo.replace('file_token:', '');
+        fields.photo = [{ file_token: fileToken }];
+      } else {
+        // legacy base64
+        fields.photo = photo;
+      }
     }
 
     if (insect._recordId) {

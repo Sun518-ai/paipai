@@ -1,8 +1,7 @@
 /**
- * 昆虫百科数据存储 — 飞书多维表格（字段对应结构）
- * 每条昆虫 = 一条飞书记录，字段一一对应
- * AppToken: RbB2bGUENaqvoUsJ0MQcJoQinIh
- * TableID: tblwuTBsKwwoMir6（昆虫记录）
+ * 昆虫百科数据存储 — 飞书多维表格
+ * photo 存储: file_token 字符串 (格式: "file_token:xxx")
+ * 前端显示: /api/photo?token=xxx → 代理飞书图片
  */
 
 export interface Insect {
@@ -14,7 +13,8 @@ export interface Insect {
   description: string;
   location: string;
   dateFound: string;
-  photo: string; // base64 data URL: data:image/...;base64,...
+  /** file_token string (file_token:xxx) or base64 legacy data URL */
+  photo: string;
   stars: number;
   notes: string;
 }
@@ -51,10 +51,31 @@ export async function deleteInsectFromCloud(recordId: string): Promise<void> {
   } catch {}
 }
 
-export async function uploadPhotoToCloud(fileData: string, _fileName: string): Promise<string> {
-  // 直接返回 base64 data URL，不上传到飞书 Drive
-  // 前端 <img src={base64}> 可以直接渲染
-  if (fileData.startsWith('data:')) return fileData;
+/**
+ * 上传照片到飞书 Drive，返回 file_token 字符串
+ * 失败时返回空字符串（前端降级为 base64 或不显示图片）
+ */
+export async function uploadPhotoToCloud(fileData: string, fileName: string): Promise<string> {
+  // 已经是 file_token 格式，直接返回
+  if (fileData.startsWith('file_token:')) return fileData;
+  // 已经是完整URL，跳过
+  if (fileData.startsWith('http')) return fileData;
+  // base64 data URL → 上传到飞书 Drive
+  if (fileData.startsWith('data:')) {
+    try {
+      const res = await fetch('/api/bitable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload_photo', fileData, fileName }),
+      });
+      if (!res.ok) return '';
+      const json = await res.json();
+      if (!json.ok || !json.fileToken) return '';
+      return `file_token:${json.fileToken}`;
+    } catch {
+      return '';
+    }
+  }
   return '';
 }
 

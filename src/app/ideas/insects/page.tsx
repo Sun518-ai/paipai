@@ -39,18 +39,16 @@ const rarityMap: Record<string, number> = {
 };
 
 function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }) {
-  const [timeLeft, setTimeLeft] = useState('');
   const cfg = RARITY_CONFIG[insect.rarity as Rarity] || RARITY_CONFIG.common;
 
-  useEffect(() => {
-    const update = () => {
-      // Show when found if we have a date
-      if (insect.dateFound) {
-        setTimeLeft(`发现于 ${insect.dateFound}`);
-      }
-    };
-    update();
-  }, [insect.dateFound]);
+  // Resolve photo URL: file_token → /api/photo proxy, base64 → as-is
+  const photoUrl = (() => {
+    if (!insect.photo) return '';
+    if (insect.photo.startsWith('file_token:')) {
+      return `/api/photo?token=${encodeURIComponent(insect.photo.replace('file_token:', ''))}`;
+    }
+    return insect.photo; // base64 or legacy URL
+  })();
 
   return (
     <div
@@ -67,9 +65,9 @@ function InsectCard({ insect, onClick }: { insect: Insect; onClick: () => void }
         </div>
 
         <div className="w-full rounded-xl bg-black/20 overflow-hidden flex items-center justify-center mb-2" style={{ height: '100px' }}>
-          {insect.photo ? (
+          {photoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={insect.photo} alt={insect.name} className="w-full h-full object-cover" />
+            <img src={photoUrl} alt={insect.name} className="w-full h-full object-cover" />
           ) : (
             <span className="text-4xl opacity-40">🐛</span>
           )}
@@ -364,12 +362,17 @@ export default function InsectsPage() {
                       ))}
                     </div>
                     <div className="w-full rounded-xl bg-black/20 overflow-hidden flex items-center justify-center mb-3" style={{ height: '180px' }}>
-                      {selectedInsect.photo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={selectedInsect.photo} alt={selectedInsect.name} className="w-full h-full object-contain" />
-                      ) : (
-                        <span className="text-7xl opacity-30">🐛</span>
-                      )}
+                      {(() => {
+                        const url = selectedInsect.photo.startsWith('file_token:')
+                          ? `/api/photo?token=${encodeURIComponent(selectedInsect.photo.replace('file_token:', ''))}`
+                          : selectedInsect.photo;
+                        return url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt={selectedInsect.name} className="w-full h-full object-contain" />
+                        ) : (
+                          <span className="text-7xl opacity-30">🐛</span>
+                        );
+                      })()}
                     </div>
                     <div className="text-center">
                       <div className="inline-block px-3 py-1 rounded-full text-xs font-bold mb-2" style={{ backgroundColor: cfg.color }}>
