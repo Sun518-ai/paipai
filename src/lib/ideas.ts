@@ -11,6 +11,24 @@ export interface Idea {
 export const ideas: Idea[] = [
 
   {
+    id: 'mira-skill',
+    title: 'Mira Skill 贡献计划',
+    description: '字节内部技能贡献平台！封装你的工具为 Skill，获得 Token 奖励。支持报名表单、贡献等级、奖励机制展示。',
+    tags: ['飞书', '多维表格', 'Skill', 'Token'],
+    status: 'done',
+    date: '2026-03-23',
+    icon: '🚀',
+  },
+  {
+    id: 'rescue-station',
+    title: '派派工程车救援站',
+    description: '🚜 救援站来了一群受伤的工程车！派派是超级救援员，用工具修理它们，然后加入超酷的英雄车库！适合3岁小朋友的互动救车游戏。',
+    tags: ['工程车', '交互', '救援', '童趣'],
+    status: 'done',
+    date: '2026-03-23',
+    icon: '🚜',
+  },
+  {
     id: 'todomcv',
     title: 'TodoMVC',
     description: '一个简洁优雅的待办事项管理应用，支持添加、完成、删除任务，任务状态持久化保存。',
