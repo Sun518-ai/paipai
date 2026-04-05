@@ -73,6 +73,63 @@ function useLang() {
   return useContext(LangContext);
 }
 
+type Lang = 'zh' | 'en';
+
+const translations = {
+  zh: {
+    back: '← 返回点子站',
+    title: 'TodoMVC',
+    subtitle: '派派的待办事项管理',
+    inputPlaceholder: '添加新任务... 按回车确认',
+    addButton: '添加',
+    filterAll: '全部',
+    filterActive: '进行中',
+    filterDone: '已完成',
+    emptyAll: '还没有任务，添加一个吧！',
+    emptyActive: '太棒了，所有任务都完成了！🎉',
+    emptyDone: '还没有已完成的任务',
+    delete: '删除',
+    inProgress: '项进行中',
+    completed: '项已完成',
+    clearDone: '清除已完成',
+    toggleLang: 'EN',
+  },
+  en: {
+    back: '← Back to Ideas',
+    title: 'TodoMVC',
+    subtitle: "Paipai's Todo Manager",
+    inputPlaceholder: 'Add a new task... Press Enter to confirm',
+    addButton: 'Add',
+    filterAll: 'All',
+    filterActive: 'Active',
+    filterDone: 'Done',
+    emptyAll: 'No tasks yet, add one!',
+    emptyActive: 'Amazing, all tasks completed! 🎉',
+    emptyDone: 'No completed tasks yet',
+    delete: 'Delete',
+    inProgress: ' active',
+    completed: ' completed',
+    clearDone: 'Clear Completed',
+    toggleLang: '中',
+  },
+};
+
+interface LangContextValue {
+  lang: Lang;
+  t: typeof translations.zh;
+  toggleLang: () => void;
+}
+
+const LangContext = createContext<LangContextValue>({
+  lang: 'zh',
+  t: translations.zh,
+  toggleLang: () => {},
+});
+
+function useLang() {
+  return useContext(LangContext);
+}
+
 function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
