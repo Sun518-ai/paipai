@@ -25,6 +25,12 @@ interface RecurringRule {
   seriesCreatedAt: number;
 }
 
+interface Tag {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Todo {
   id: string;
   localId: string;
@@ -38,11 +44,17 @@ interface Todo {
   dueDate?: number;
   recurring?: RecurringRule;
   completedAt?: number;
+  tagIds: string[];
 }
 
 type Lang = 'zh' | 'en';
 type Theme = 'light' | 'dark';
-type DueStatus = 'normal' | 'dueSoon' | 'overdue';
+
+const DEFAULT_TAGS: Tag[] = [
+  { id: 'tag-work', name: '工作', color: '#3b82f6' },
+  { id: 'tag-urgent', name: '紧急', color: '#ef4444' },
+  { id: 'tag-study', name: '学习', color: '#22c55e' },
+];
 
 const translations = {
   zh: {
@@ -54,11 +66,11 @@ const translations = {
     filterAll: '全部',
     filterActive: '进行中',
     filterDone: '已完成',
-    filterDueSoon: '即将到期',
     emptyAll: '还没有任务，添加一个吧！',
     emptyActive: '太棒了，所有任务都完成了！🎉',
     emptyDone: '还没有已完成的任务',
-    emptyDueSoon: '🎉 没有即将到期的任务',
+    emptyDueSoon: '没有即将到期的任务',
+    filterDueSoon: '即将到期',
     delete: '删除',
     inProgress: '项进行中',
     completed: '项已完成',
@@ -89,6 +101,19 @@ const translations = {
     fri: '周五',
     sat: '周六',
     day: '日',
+    manageTags: '标签管理',
+    addTag: '添加标签',
+    editTag: '编辑标签',
+    deleteTag: '删除标签',
+    tagName: '标签名',
+    tagColor: '颜色',
+    noTags: '暂无标签',
+    filterByTag: '按标签筛选',
+    selectTags: '选择标签',
+    close: '关闭',
+    tagManageTitle: '标签管理',
+    tagManageSubtitle: '增删改标签',
+    tagNamePlaceholder: '例如：工作',
   },
   en: {
     back: '← Back to Ideas',
@@ -99,11 +124,11 @@ const translations = {
     filterAll: 'All',
     filterActive: 'Active',
     filterDone: 'Done',
-    filterDueSoon: 'Due Soon',
     emptyAll: 'No tasks yet, add one!',
     emptyActive: 'Amazing, all tasks completed! 🎉',
     emptyDone: 'No completed tasks yet',
-    emptyDueSoon: '🎉 No tasks due soon',
+    emptyDueSoon: 'No tasks due soon',
+    filterDueSoon: 'Due Soon',
     delete: 'Delete',
     inProgress: ' active',
     completed: ' completed',
@@ -134,6 +159,19 @@ const translations = {
     fri: 'Fri',
     sat: 'Sat',
     day: '',
+    manageTags: 'Manage Tags',
+    addTag: 'Add Tag',
+    editTag: 'Edit Tag',
+    deleteTag: 'Delete Tag',
+    tagName: 'Tag Name',
+    tagColor: 'Color',
+    noTags: 'No tags yet',
+    filterByTag: 'Filter by tag',
+    selectTags: 'Select Tags',
+    close: 'Close',
+    tagManageTitle: 'Tag Manager',
+    tagManageSubtitle: 'Add, edit or delete tags',
+    tagNamePlaceholder: 'e.g. Work',
   },
 };
 
@@ -159,14 +197,8 @@ function genId() { return Date.now().toString(36) + Math.random().toString(36).s
 const WEEKDAYS_ZH = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const WEEKDAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function getRecurringLabel(rule: RecurringRule, t: typeof translations.zh): string {
-  switch (rule.type) {
-    case 'daily': return t.recurringDaily;
-    case 'weekly': return t.recurringOn + (t.sun.startsWith('S') ? WEEKDAYS_EN : WEEKDAYS_ZH)[rule.dayOfWeek ?? 0];
-    case 'monthly': return t.recurringOn + rule.dayOfMonth + t.day;
-    default: return '';
-  }
-}
+// ─── Types ───────────────────────────────────────────────────────────────────
+type DueStatus = 'normal' | 'dueSoon' | 'overdue';
 
 function getDueStatus(todo: Todo): DueStatus {
   if (todo.done || todo.dueDate === undefined || todo.dueDate === null) return 'normal';
@@ -186,6 +218,16 @@ function formatDueDate(timestamp: number, lang: Lang): string {
   return due.toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' });
 }
 
+function getRecurringLabel(rule: RecurringRule, t: typeof translations.zh): string {
+  switch (rule.type) {
+    case 'daily': return t.recurringDaily;
+    case 'weekly': return t.recurringOn + (t.sun.startsWith('S') ? WEEKDAYS_EN : WEEKDAYS_ZH)[rule.dayOfWeek ?? 0];
+    case 'monthly': return t.recurringOn + rule.dayOfMonth + t.day;
+    default: return '';
+  }
+}
+
+// ─── RecurringSelector ────────────────────────────────────────────────────────
 interface RecurringSelectorProps {
   value: RecurringType;
   dayOfWeek: number;
@@ -251,6 +293,7 @@ function RecurringSelector({ value, dayOfWeek, dayOfMonth, onChange }: Recurring
   );
 }
 
+// ─── RecurringBadge ───────────────────────────────────────────────────────────
 function RecurringBadge({ rule }: { rule: RecurringRule }) {
   const { t } = useLang();
   const [showTooltip, setShowTooltip] = useState(false);
@@ -262,6 +305,7 @@ function RecurringBadge({ rule }: { rule: RecurringRule }) {
   );
 }
 
+// ─── DatePickerButton ────────────────────────────────────────────────────────
 function DatePickerButton({ dueDate, onSet, t }: { dueDate: number | null | undefined; onSet: (ts: number | null) => void; t: typeof translations.zh }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -283,8 +327,199 @@ function DatePickerButton({ dueDate, onSet, t }: { dueDate: number | null | unde
   );
 }
 
+// ─── TagBadge ────────────────────────────────────────────────────────────────
+function TagBadge({ tag, small = false }: { tag: Tag; small?: boolean }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full font-medium ${small ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-0.5 text-xs'}`}
+      style={{ backgroundColor: tag.color + '22', color: tag.color, border: `1px solid ${tag.color}44` }}
+    >
+      {tag.name}
+    </span>
+  );
+}
+
+// ─── TagPicker ───────────────────────────────────────────────────────────────
+function TagPicker({
+  tags,
+  selectedIds,
+  onToggle,
+  onClose,
+}: {
+  tags: Tag[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onClose: () => void;
+}) {
+  const { t } = useLang();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 w-80 border border-gray-100 dark:border-slate-700"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-base font-semibold text-gray-800 dark:text-slate-100 mb-3">{t.selectTags}</h3>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {tags.map((tag) => {
+            const selected = selectedIds.includes(tag.id);
+            return (
+              <button
+                key={tag.id}
+                onClick={() => onToggle(tag.id)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all"
+                style={selected
+                  ? { backgroundColor: tag.color + '22', color: tag.color, border: `1.5px solid ${tag.color}` }
+                  : { backgroundColor: tag.color + '15', color: tag.color, border: `1.5px solid ${tag.color}44` }
+                }
+              >
+                <span>{tag.name}</span>
+                {selected && <span>✓</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-indigo-500 text-white rounded-xl text-sm font-medium hover:bg-indigo-600 transition-colors"
+          >
+            {t.close}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TagManageModal ──────────────────────────────────────────────────────────
+function TagManageModal({
+  tags,
+  onClose,
+  onAddTag,
+  onUpdateTag,
+  onDeleteTag,
+}: {
+  tags: Tag[];
+  onClose: () => void;
+  onAddTag: (tag: Tag) => void;
+  onUpdateTag: (tag: Tag) => void;
+  onDeleteTag: (id: string) => void;
+}) {
+  const { t } = useLang();
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('#3b82f6');
+  const [newName, setNewName] = useState('');
+  const [newColor, setNewColor] = useState('#3b82f6');
+  const [showAdd, setShowAdd] = useState(false);
+
+  const startEdit = (tag: Tag) => {
+    setEditId(tag.id);
+    setEditName(tag.name);
+    setEditColor(tag.color);
+  };
+
+  const saveEdit = () => {
+    if (!editId || !editName.trim()) return;
+    onUpdateTag({ id: editId, name: editName.trim(), color: editColor });
+    setEditId(null);
+  };
+
+  const addNew = () => {
+    if (!newName.trim()) return;
+    onAddTag({ id: genId(), name: newName.trim(), color: newColor });
+    setNewName('');
+    setNewColor('#3b82f6');
+    setShowAdd(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 w-[22rem] border border-gray-100 dark:border-slate-700 max-h-[80vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-slate-100">{t.tagManageTitle}</h3>
+            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{t.tagManageSubtitle}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 text-xl">✕</button>
+        </div>
+
+        <div className="space-y-2 mb-4">
+          {tags.length === 0 && (
+            <p className="text-sm text-gray-400 dark:text-slate-500 text-center py-4">{t.noTags}</p>
+          )}
+          {tags.map((tag) => (
+            <div key={tag.id} className="flex items-center gap-2">
+              {editId === tag.id ? (
+                <>
+                  <input
+                    type="color"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="w-8 h-8 rounded cursor-pointer border-0"
+                  />
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+                    className="flex-1 px-3 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                  <button onClick={saveEdit} className="text-xs px-2 py-1 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">✓</button>
+                  <button onClick={() => setEditId(null)} className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
+                </>
+              ) : (
+                <>
+                  <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }} />
+                  <TagBadge tag={tag} />
+                  <div className="ml-auto flex gap-1">
+                    <button onClick={() => startEdit(tag)} className="text-xs px-2 py-1 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors">✏️</button>
+                    <button onClick={() => onDeleteTag(tag.id)} className="text-xs px-2 py-1 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">🗑️</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {showAdd ? (
+          <div className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-xl">
+            <input
+              type="color"
+              value={newColor}
+              onChange={(e) => setNewColor(e.target.value)}
+              className="w-8 h-8 rounded cursor-pointer border-0"
+            />
+            <input
+              type="text"
+              placeholder={t.tagNamePlaceholder}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addNew()}
+              className="flex-1 px-3 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            />
+            <button onClick={addNew} className="text-xs px-2 py-1 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">✓</button>
+            <button onClick={() => setShowAdd(false)} className="text-xs px-2 py-1 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300">✕</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAdd(true)}
+            className="w-full py-2 text-sm text-indigo-500 dark:text-indigo-400 border border-dashed border-indigo-300 dark:border-indigo-700 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+          >
+            + {t.addTag}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TodoMCVPage() {
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
   const [lang, setLang] = useState<Lang>('zh');
   const [theme, setTheme] = useState<Theme>('light');
   const [input, setInput] = useState('');
@@ -296,6 +531,9 @@ export default function TodoMCVPage() {
   const [recurringType, setRecurringType] = useState<RecurringType>('none');
   const [dayOfWeek, setDayOfWeek] = useState(new Date().getDay());
   const [dayOfMonth, setDayOfMonth] = useState(new Date().getDate());
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const [showTagPicker, setShowTagPicker] = useState<string | null>(null);
+  const [showTagManage, setShowTagManage] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const syncingRef = useRef(false);
@@ -306,24 +544,17 @@ export default function TodoMCVPage() {
   // Load initial data: merge local + cloud
   useEffect(() => {
     loadHybrid<Lang>('paipai-todomcv-lang', 'zh').then((l) => setLang(l));
-    const storedTheme = localStorage.getItem('paipai-todomcv-theme');
-    if (storedTheme === 'light' || storedTheme === 'dark') { setTheme(storedTheme); applyTheme(storedTheme); }
-    else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      const resolved = prefersDark ? 'dark' : 'light';
-      setTheme(resolved);
-      applyTheme(resolved);
-    }
 
     // Load todos from local first, then try to merge with cloud
     loadHybrid<Todo[]>('paipai-todos', []).then(async (localTodos) => {
-      // Migrate old todos without localId
+      // Migrate old todos without localId and without tagIds
       const migrated = localTodos.map((t) => ({
         ...t,
         localId: (t as SyncTodo).localId || t.id,
         updatedAt: (t as SyncTodo).updatedAt || t.createdAt,
         priority: (t as Todo).priority || 'P3' as Priority,
         dueDate: (t as Todo).dueDate ?? undefined,
+        tagIds: (t as Todo).tagIds || [],
       }));
 
       if (!navigator.onLine) {
@@ -342,7 +573,6 @@ export default function TodoMCVPage() {
         saveHybrid('paipai-todos', merged);
         setTodos(merged);
         setSyncStatus('synced');
-        // Reset to idle after 2s
         setTimeout(() => setSyncStatus('idle'), 2000);
       } catch (e) {
         console.warn('[todoSync] initial load failed, using local:', e);
@@ -351,6 +581,24 @@ export default function TodoMCVPage() {
         setSyncError(String(e));
       }
     });
+
+    // Load tags
+    loadHybrid<Tag[]>('paipai-tags', DEFAULT_TAGS).then((loadedTags) => {
+      const merged = [...DEFAULT_TAGS];
+      loadedTags.forEach((lt) => {
+        if (!merged.find((d) => d.id === lt.id)) merged.push(lt);
+      });
+      setTags(merged);
+    });
+
+    const storedTheme = localStorage.getItem('paipai-todomcv-theme');
+    if (storedTheme === 'light' || storedTheme === 'dark') { setTheme(storedTheme); applyTheme(storedTheme); }
+    else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const resolved = prefersDark ? 'dark' : 'light';
+      setTheme(resolved);
+      applyTheme(resolved);
+    }
   }, []);
 
   useEffect(() => {
@@ -420,6 +668,10 @@ export default function TodoMCVPage() {
     saveHybrid('paipai-todomcv-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    saveHybrid('paipai-tags', tags);
+  }, [tags]);
+
   const toggleLang = () => setLang((prev) => (prev === 'zh' ? 'en' : 'zh'));
   const toggleTheme = () => { setTheme((prev) => { const next = prev === 'light' ? 'dark' : 'light'; applyTheme(next); return next; }); };
   const handleRecurringChange = (type: RecurringType, dow: number, dom: number) => { setRecurringType(type); setDayOfWeek(dow); setDayOfMonth(dom); };
@@ -439,6 +691,7 @@ export default function TodoMCVPage() {
       updatedAt: now,
       priority: 'P3' as Priority,
       dueDate: undefined,
+      tagIds: [],
     };
     if (recurringType !== 'none') {
       newTodo.recurring = {
@@ -470,7 +723,8 @@ export default function TodoMCVPage() {
           updatedAt: now,
           priority: task.priority,
           dueDate: undefined,
-          recurring: { ...task.recurring, lastGeneratedAt: now, seriesCreatedAt: task.recurring.seriesCreatedAt }
+          recurring: { ...task.recurring, lastGeneratedAt: now, seriesCreatedAt: task.recurring.seriesCreatedAt },
+          tagIds: task.tagIds,
         };
         return [...prev.map((t) => t.id === id ? { ...t, done: true, completedAt: now, updatedAt: now } : t), newTask];
       }
@@ -502,11 +756,40 @@ export default function TodoMCVPage() {
     setTodos((prev) => prev.map((t) => t.id === id ? { ...t, dueDate: timestamp ?? undefined, updatedAt: Date.now() } : t));
   };
 
+  const toggleTodoTag = (todoId: string, tagId: string) => {
+    setTodos((prev) =>
+      prev.map((t) => {
+        if (t.id !== todoId) return t;
+        const has = t.tagIds.includes(tagId);
+        return { ...t, tagIds: has ? t.tagIds.filter((id) => id !== tagId) : [...t.tagIds, tagId] };
+      })
+    );
+  };
+
+  const addTag = (tag: Tag) => {
+    setTags((prev) => [...prev, tag]);
+  };
+
+  const updateTag = (tag: Tag) => {
+    setTags((prev) => prev.map((tg) => (tg.id === tag.id ? tag : tg)));
+  };
+
+  const deleteTag = (tagId: string) => {
+    setTags((prev) => prev.filter((tg) => tg.id !== tagId));
+    setTodos((prev) =>
+      prev.map((t) => ({ ...t, tagIds: t.tagIds.filter((id) => id !== tagId) }))
+    );
+    if (selectedTagId === tagId) setSelectedTagId(null);
+  };
+
   const filtered = todos
     .filter((t) => {
       if (filter === 'active') return !t.done;
       if (filter === 'done') return t.done;
-      if (filter === 'dueSoon') return getDueStatus(t) === 'dueSoon';
+      return true;
+    })
+    .filter((t) => {
+      if (selectedTagId) return t.tagIds.includes(selectedTagId);
       return true;
     })
     .sort((a, b) => {
@@ -538,12 +821,16 @@ export default function TodoMCVPage() {
   const activeCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.length - activeCount;
   const dueSoonCount = todos.filter((t) => getDueStatus(t) === 'dueSoon').length;
+
+  const getTagById = (id: string) => tags.find((tag) => tag.id === id);
+
   const bgStyle = { background: `linear-gradient(to bottom right, var(--bg-gradient-start), var(--bg-gradient-mid), var(--bg-gradient-end))` };
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <LangContext.Provider value={{ lang, t, toggleLang }}>
         <div className="min-h-screen" style={bgStyle}>
+          {/* Back link + controls row */}
           <div className="max-w-2xl mx-auto px-6 pt-8 flex items-center justify-end gap-2">
             <Link
               href="/"
@@ -551,6 +838,13 @@ export default function TodoMCVPage() {
             >
               {t.back}
             </Link>
+            <button
+              onClick={() => setShowTagManage(true)}
+              className="px-3 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+              title={t.manageTags}
+            >
+              🏷️ {t.manageTags}
+            </button>
             <button
               onClick={toggleTheme}
               aria-label={theme === 'light' ? '切换到深色模式' : 'Switch to light mode'}
@@ -587,11 +881,39 @@ export default function TodoMCVPage() {
             </div>
           </div>
           <div className="max-w-2xl mx-auto px-6 py-10">
+            {/* Title */}
             <div className="text-center mb-8">
               <span className="text-5xl mb-3 block">✅</span>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-slate-100">{t.title}</h1>
               <p className="text-gray-500 dark:text-slate-400 mt-1">{t.subtitle}</p>
             </div>
+
+            {/* Tag Filter Bar */}
+            {tags.length > 0 && (
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-xs text-gray-400 dark:text-slate-500 mr-1">{t.filterByTag}:</span>
+                <button
+                  onClick={() => setSelectedTagId(null)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${!selectedTagId ? 'bg-gray-700 dark:bg-gray-300 text-white dark:text-gray-800' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'}`}
+                >
+                  {t.filterAll}
+                </button>
+                {tags.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => setSelectedTagId(selectedTagId === tag.id ? null : tag.id)}
+                    className="px-3 py-1 rounded-full text-xs font-medium transition-all"
+                    style={selectedTagId === tag.id
+                      ? { backgroundColor: tag.color + '22', color: tag.color, border: `1.5px solid ${tag.color}` }
+                      : { backgroundColor: tag.color + '15', color: tag.color, border: `1.5px solid ${tag.color}44` }
+                    }
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="flex flex-col gap-2 mb-6">
               <div className="flex gap-2">
                 <input ref={inputRef} type="text" placeholder={t.inputPlaceholder} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTodo()}
@@ -630,6 +952,7 @@ export default function TodoMCVPage() {
                     const dueStatus = getDueStatus(todo);
                     const isOverdue = dueStatus === 'overdue';
                     const isDueSoon = dueStatus === 'dueSoon';
+                    const todoTags = todo.tagIds.map(getTagById).filter(Boolean) as Tag[];
                     return (
                       <li key={todo.id}
                         className={`flex items-center gap-3 px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${idx !== filtered.length - 1 ? 'border-b border-gray-50 dark:border-slate-700/50' : ''} ${isOverdue && !todo.done ? 'bg-red-50 dark:bg-red-900/10 border-l-4 border-l-red-500' : isDueSoon && !todo.done ? 'bg-amber-50 dark:bg-amber-900/10 border-l-4 border-l-amber-400' : ''}`}>
@@ -642,9 +965,17 @@ export default function TodoMCVPage() {
                           <div className="min-w-0 flex-1">
                             <span className={`text-lg transition-all block truncate ${todo.done ? 'text-gray-400 dark:text-slate-500 line-through' : isOverdue ? 'text-red-600 dark:text-red-400' : isDueSoon ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-slate-100'}`}>{todo.text}</span>
                             {todo.dueDate !== undefined && <span className={`text-xs mt-0.5 block ${todo.done ? 'text-gray-400 dark:text-slate-500' : isOverdue ? 'text-red-500 dark:text-red-400 font-medium' : isDueSoon ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`}>{isOverdue && '⚠️ '}{isDueSoon && '📅 '}{formatDueDate(todo.dueDate, lang)}</span>}
+                            {todoTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {todoTags.map((tag) => (
+                                  <TagBadge key={tag.id} tag={tag} small />
+                                ))}
+                              </div>
+                            )}
                           </div>
                           {todo.done && todo.recurring && todo.recurring.type !== 'none' && <span className="text-green-500 flex-shrink-0" title="Next occurrence generated">✨</span>}
                         </div>
+                        <button onClick={() => setShowTagPicker(todo.id)} className="text-gray-300 dark:text-slate-600 hover:text-indigo-400 dark:hover:text-indigo-400 transition-colors text-sm" title={t.selectTags}>🏷️</button>
                         <DatePickerButton dueDate={todo.dueDate} onSet={(ts) => setDueDate(todo.id, ts)} t={t} />
                         <button onClick={() => togglePin(todo.id)} className={`text-base transition-colors ${todo.pinned ? 'text-amber-400 hover:text-amber-600' : 'text-gray-300 hover:text-amber-400'}`} title={todo.pinned ? t.unpin : t.pin}>📌</button>
                         <button onClick={() => deleteTodo(todo.id)} className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors text-sm" title={t.delete}>🗑️</button>
@@ -654,6 +985,8 @@ export default function TodoMCVPage() {
                 </ul>
               )}
             </div>
+
+            {/* Footer */}
             {todos.length > 0 && (
               <div className="flex items-center justify-between mt-4 text-sm text-gray-400 dark:text-slate-500 px-1">
                 <span>{activeCount} {t.inProgress} · {doneCount} {t.completed}</span>
@@ -662,6 +995,25 @@ export default function TodoMCVPage() {
             )}
           </div>
         </div>
+
+        {showTagPicker && (
+          <TagPicker
+            tags={tags}
+            selectedIds={todos.find((t) => t.id === showTagPicker)?.tagIds || []}
+            onToggle={(tagId) => toggleTodoTag(showTagPicker, tagId)}
+            onClose={() => setShowTagPicker(null)}
+          />
+        )}
+
+        {showTagManage && (
+          <TagManageModal
+            tags={tags}
+            onClose={() => setShowTagManage(false)}
+            onAddTag={addTag}
+            onUpdateTag={updateTag}
+            onDeleteTag={deleteTag}
+          />
+        )}
       </LangContext.Provider>
     </ThemeContext.Provider>
   );
