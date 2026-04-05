@@ -14,3 +14,43 @@ body {
 canvas {
   display: block;
 }
+
+/* TodoMVC Dark Mode — Color System */
+:root {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-gradient-start: #eef2ff;
+  --bg-gradient-mid: #ffffff;
+  --bg-gradient-end: #faf5ff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #cbd5e1;
+  --border-color: #e2e8f0;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+  --danger: #ef4444;
+}
+
+[data-theme='dark'] {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-gradient-start: #1e1b4b;
+  --bg-gradient-mid: #1e293b;
+  --bg-gradient-end: #2e1065;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+  --border-color: #334155;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --danger: #f87171;
+}
+
+/* Smooth theme transitions */
+*,
+*::before,
+*::after {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
