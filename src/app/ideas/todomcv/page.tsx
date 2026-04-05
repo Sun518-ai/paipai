@@ -34,6 +34,8 @@ const translations = {
     clearDone: '清除已完成',
     toggleLang: 'EN',
     toggleTheme: '深色模式',
+    pin: '置顶',
+    unpin: '取消置顶',
   },
   en: {
     back: '← Back to Ideas',
@@ -53,12 +55,8 @@ const translations = {
     clearDone: 'Clear Completed',
     toggleLang: '中',
     toggleTheme: 'Dark Mode',
-    toggleTheme: '深色模式',
-    pin: '置顶',
-    unpin: '取消置顶',
-    toggleTheme: '深色模式',
-    pin: '置顶',
-    unpin: '取消置顶',
+    pin: 'Pin',
+    unpin: 'Unpin',
   },
 };
 
