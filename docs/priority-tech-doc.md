@@ -6,8 +6,6 @@
 
 ## 2. 数据模型变更
 
-**文件**: `src/app/ideas/todomcv/page.tsx`
-
 ```typescript
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -34,35 +32,9 @@ const PRIORITY_CONFIG: Record<Priority, { label: string; labelEn: string; color:
 const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 ```
 
-## 4. 翻译文案变更
-
-在 `translations` 对象中新增优先级相关文案：
+## 4. 排序逻辑变更
 
 ```typescript
-const translations = {
-  zh: {
-    // ... 现有字段
-    priority: '优先级',
-    priorityUrgent: '紧急',
-    priorityHigh: '高',
-    priorityMedium: '中',
-    priorityLow: '低',
-  },
-  en: {
-    // ... 现有字段
-    priority: 'Priority',
-    priorityUrgent: 'Urgent',
-    priorityHigh: 'High',
-    priorityMedium: 'Medium',
-    priorityLow: 'Low',
-  },
-};
-```
-
-## 5. 排序逻辑变更
-
-```typescript
-// sort 函数改为综合排序：置顶 > 优先级 > 创建时间
 .sort((a, b) => {
   if (a.pinned && !b.pinned) return -1;
   if (!a.pinned && b.pinned) return 1;
@@ -73,55 +45,31 @@ const translations = {
 });
 ```
 
-## 6. 新增组件
+## 5. 新增组件
 
 ### PrioritySelector
 
-```typescript
-function PrioritySelector({
-  todoId,
-  currentPriority,
-  onSelect,
-  onClose,
-}: {
-  todoId: string;
-  currentPriority: Priority;
-  onSelect: (id: string, p: Priority) => void;
-  onClose: () => void;
-})
-```
+绝对定位的下拉菜单，点击外部自动关闭（document mousedown listener），4 个优先级选项，带颜色图标和本地化名称。
 
-- 绝对定位的下拉菜单
-- 点击外部自动关闭（document mousedown listener）
-- 4 个优先级选项，带颜色图标和本地化名称
-
-## 7. 新增状态
+## 6. 新增状态
 
 ```typescript
 const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
 ```
 
-## 8. 新增函数
+## 7. 新增函数
 
 - `setPriority(id, priority)` - 设置任务优先级
 
-## 9. 任务行变更
+## 8. 任务行变更
 
 - checkbox 左侧新增优先级按钮（带颜色 emoji）
-- P0 任务行：红色左边线 `border-l-4 border-red-500`
-- P0 任务文字加粗 `font-semibold`
+- P0 任务行：红色左边线 border-l-4 border-red-500
+- P0 任务文字加粗 font-semibold
 - 点击优先级按钮展开 PrioritySelector 下拉菜单
 
-## 10. 默认值变更
-
-```typescript
-// addTodo 中新增任务默认 priority 为 'P3'
-{ id: genId(), text, done: false, pinned: false, createdAt: Date.now(), priority: 'P3' as Priority }
-```
-
-## 11. 构建要求
+## 9. 构建要求
 
 - 所有新增代码使用 TypeScript 严格模式
 - 不引入新的 npm 依赖
 - `npm run build` 必须通过
-- 遵循 Tailwind CSS 原子化样式规范

@@ -1,8 +1,10 @@
-'use client';
+"'use client'";
 
 import Link from 'next/link';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
+
+type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
 interface Todo {
   id: string;
@@ -10,12 +12,20 @@ interface Todo {
   done: boolean;
   createdAt: number;
   pinned: boolean;
-  dueDate: number | null;
+  priority: Priority;
 }
 
 type Lang = 'zh' | 'en';
 type Theme = 'light' | 'dark';
-type DueStatus = 'normal' | 'dueSoon' | 'overdue';
+
+const PRIORITY_CONFIG: Record<Priority, { label: string; labelEn: string; color: string; emoji: string }> = {
+  P0: { label: '紧急', labelEn: 'Urgent',  color: '#EF4444', emoji: '🔴' },
+  P1: { label: '高',   labelEn: 'High',    color: '#F97316', emoji: '🟠' },
+  P2: { label: '中',   labelEn: 'Medium',  color: '#3B82F6', emoji: '🔵' },
+  P3: { label: '低',   labelEn: 'Low',     color: '#9CA3AF', emoji: '⚪' },
+};
+
+const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 const translations = {
   zh: {
@@ -27,11 +37,9 @@ const translations = {
     filterAll: '全部',
     filterActive: '进行中',
     filterDone: '已完成',
-    filterDueSoon: '即将到期',
     emptyAll: '还没有任务，添加一个吧！',
     emptyActive: '太棒了，所有任务都完成了！🎉',
     emptyDone: '还没有已完成的任务',
-    emptyDueSoon: '🎉 没有即将到期的任务',
     delete: '删除',
     inProgress: '项进行中',
     completed: '项已完成',
@@ -40,12 +48,11 @@ const translations = {
     toggleTheme: '深色模式',
     pin: '置顶',
     unpin: '取消置顶',
-    setDueDate: '设定日期',
-    clearDueDate: '清除日期',
-    today: '今天',
-    tomorrow: '明天',
-    sortByDue: '按日期排序',
-    sortByCreated: '按创建排序',
+    priority: '优先级',
+    priorityUrgent: '紧急',
+    priorityHigh: '高',
+    priorityMedium: '中',
+    priorityLow: '低',
   },
   en: {
     back: '← Back to Ideas',
@@ -56,11 +63,9 @@ const translations = {
     filterAll: 'All',
     filterActive: 'Active',
     filterDone: 'Done',
-    filterDueSoon: 'Due Soon',
     emptyAll: 'No tasks yet, add one!',
     emptyActive: 'Amazing, all tasks completed! 🎉',
     emptyDone: 'No completed tasks yet',
-    emptyDueSoon: '🎉 No tasks due soon',
     delete: 'Delete',
     inProgress: ' active',
     completed: ' completed',
@@ -69,12 +74,11 @@ const translations = {
     toggleTheme: 'Dark Mode',
     pin: 'Pin',
     unpin: 'Unpin',
-    setDueDate: 'Set due date',
-    clearDueDate: 'Clear date',
-    today: 'Today',
-    tomorrow: 'Tomorrow',
-    sortByDue: 'Sort by due',
-    sortByCreated: 'Sort by created',
+    priority: 'Priority',
+    priorityUrgent: 'Urgent',
+    priorityHigh: 'High',
+    priorityMedium: 'Medium',
+    priorityLow: 'Low',
   },
 };
 
@@ -112,30 +116,59 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
-function getDueStatus(todo: Todo): DueStatus {
-  if (todo.done || todo.dueDate === null) return 'normal';
-  const now = Date.now();
-  const diff = todo.dueDate - now;
-  if (diff < 0) return 'overdue';
-  if (diff <= 24 * 60 * 60 * 1000) return 'dueSoon';
-  return 'normal';
-}
+function PrioritySelector({
+  todoId,
+  currentPriority,
+  onSelect,
+  onClose,
+}: {
+  todoId: string;
+  currentPriority: Priority;
+  onSelect: (id: string, p: Priority) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { lang, t } = useLang();
 
-function formatDueDate(timestamp: number, lang: Lang): string {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const due = new Date(timestamp);
-  due.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((timestamp - now.getTime()) / (24 * 60 * 60 * 1000));
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
 
-  if (diffDays === 0) return translations[lang].today;
-  if (diffDays === 1) return translations[lang].tomorrow;
-  if (diffDays === -1) return lang === 'zh' ? '昨天' : 'Yesterday';
+  const priorityLabels: Record<Priority, string> = {
+    P0: t.priorityUrgent,
+    P1: t.priorityHigh,
+    P2: t.priorityMedium,
+    P3: t.priorityLow,
+  };
 
-  return due.toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+  return (
+    <div
+      ref={ref}
+      className="absolute right-16 top-1/2 -translate-y-1/2 z-20 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl shadow-lg py-1 min-w-[120px]"
+    >
+      {(Object.keys(PRIORITY_CONFIG) as Priority[]).map((p) => (
+        <button
+          key={p}
+          onClick={() => {
+            onSelect(todoId, p);
+            onClose();
+          }}
+          className={`w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors ${
+            currentPriority === p ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+          }`}
+        >
+          <span style={{ color: PRIORITY_CONFIG[p].color }}>{PRIORITY_CONFIG[p].emoji}</span>
+          <span className="text-gray-700 dark:text-slate-200">{priorityLabels[p]}</span>
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export default function TodoMCVPage() {
@@ -143,8 +176,8 @@ export default function TodoMCVPage() {
   const [lang, setLang] = useState<Lang>('zh');
   const [theme, setTheme] = useState<Theme>('light');
   const [input, setInput] = useState('');
-  const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'dueSoon'>('all');
-  const [sortByDue, setSortByDue] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
+  const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const t = translations[lang];
@@ -155,14 +188,7 @@ export default function TodoMCVPage() {
 
   useEffect(() => {
     loadHybrid<Lang>('paipai-todomcv-lang', 'zh').then((l) => setLang(l));
-    loadHybrid<Todo[]>('paipai-todos', []).then((todos) => {
-      setTodos(
-        todos.map((t) => ({
-          ...t,
-          dueDate: (t as Todo).dueDate ?? null,
-        }))
-      );
-    });
+    loadHybrid<Todo[]>('paipai-todos', []).then(setTodos);
     const storedTheme = localStorage.getItem('paipai-todomcv-theme');
     if (storedTheme === 'light' || storedTheme === 'dark') {
       setTheme(storedTheme);
@@ -178,7 +204,6 @@ export default function TodoMCVPage() {
   useEffect(() => {
     const storedTheme = localStorage.getItem('paipai-todomcv-theme');
     if (storedTheme !== null && storedTheme !== 'system') return;
-
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
       const resolved = e.matches ? 'dark' : 'light';
@@ -221,7 +246,7 @@ export default function TodoMCVPage() {
     const text = input.trim();
     if (!text) return;
     setTodos((prev) => [
-      { id: genId(), text, done: false, pinned: false, createdAt: Date.now(), dueDate: null },
+      { id: genId(), text, done: false, pinned: false, createdAt: Date.now(), priority: 'P3' as Priority },
       ...prev,
     ]);
     setInput('');
@@ -239,6 +264,12 @@ export default function TodoMCVPage() {
     );
   };
 
+  const setPriority = (id: string, p: Priority) => {
+    setTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, priority: p } : t))
+    );
+  };
+
   const deleteTodo = (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
   };
@@ -247,55 +278,23 @@ export default function TodoMCVPage() {
     setTodos((prev) => prev.filter((t) => !t.done));
   };
 
-  const setDueDate = (id: string, timestamp: number | null) => {
-    setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, dueDate: timestamp } : t))
-    );
-  };
-
   const filtered = todos
     .filter((t) => {
       if (filter === 'active') return !t.done;
       if (filter === 'done') return t.done;
-      if (filter === 'dueSoon') return getDueStatus(t) === 'dueSoon';
       return true;
     })
     .sort((a, b) => {
       if (a.pinned && !b.pinned) return -1;
       if (!a.pinned && b.pinned) return 1;
-
-      if (sortByDue) {
-        const statusA = getDueStatus(a);
-        const statusB = getDueStatus(b);
-        const statusOrder: Record<DueStatus, number> = { overdue: 0, dueSoon: 1, normal: 2 };
-
-        if (a.dueDate === null && b.dueDate !== null) return 1;
-        if (b.dueDate === null && a.dueDate !== null) return -1;
-        if (a.dueDate === null && b.dueDate === null) return b.createdAt - a.createdAt;
-
-        if (statusA !== statusB) return statusOrder[statusA] - statusOrder[statusB];
-        return (a.dueDate as number) - (b.dueDate as number);
+      if (a.priority !== b.priority) {
+        return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
       }
-
-      const statusA = getDueStatus(a);
-      const statusB = getDueStatus(b);
-
-      if (statusA === 'overdue' && statusB !== 'overdue') return -1;
-      if (statusB === 'overdue' && statusA !== 'overdue') return 1;
-
-      if (statusA === 'dueSoon' && statusB === 'normal') return -1;
-      if (statusB === 'dueSoon' && statusA === 'normal') return 1;
-
-      if (a.dueDate !== null && b.dueDate !== null) return a.dueDate - b.dueDate;
-      if (a.dueDate !== null) return -1;
-      if (b.dueDate !== null) return 1;
-
       return b.createdAt - a.createdAt;
     });
 
   const activeCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.length - activeCount;
-  const dueSoonCount = todos.filter((t) => getDueStatus(t) === 'dueSoon').length;
 
   const langValue = { lang, t, toggleLang };
   const themeValue = { theme, toggleTheme };
@@ -356,21 +355,8 @@ export default function TodoMCVPage() {
               </button>
             </div>
 
-            <div className="flex items-center justify-end mb-3">
-              <button
-                onClick={() => setSortByDue((prev) => !prev)}
-                className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                  sortByDue
-                    ? 'bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400'
-                    : 'bg-white/60 dark:bg-slate-800/60 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:border-indigo-300'
-                }`}
-              >
-                {sortByDue ? t.sortByDue : t.sortByCreated}
-              </button>
-            </div>
-
             <div className="flex items-center gap-1 mb-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-1">
-              {(['all', 'active', 'done', 'dueSoon'] as const).map((f) => (
+              {(['all', 'active', 'done'] as const).map((f) => (
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
@@ -380,11 +366,10 @@ export default function TodoMCVPage() {
                       : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
                   }`}
                 >
-                  {f === 'all' ? t.filterAll : f === 'active' ? t.filterActive : f === 'done' ? t.filterDone : t.filterDueSoon}
+                  {f === 'all' ? t.filterAll : f === 'active' ? t.filterActive : t.filterDone}
                   {f === 'all' && ` (${todos.length})`}
                   {f === 'active' && ` (${activeCount})`}
                   {f === 'done' && ` (${doneCount})`}
-                  {f === 'dueSoon' && ` (${dueSoonCount})`}
                 </button>
               ))}
             </div>
@@ -392,111 +377,89 @@ export default function TodoMCVPage() {
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden">
               {filtered.length === 0 ? (
                 <div className="text-center py-12">
-                  <p className="text-4xl mb-2">{filter === 'dueSoon' ? '🎉' : '📝'}</p>
+                  <p className="text-4xl mb-2">📝</p>
                   <p className="text-gray-400 dark:text-slate-500">
                     {filter === 'all'
                       ? t.emptyAll
                       : filter === 'active'
                       ? t.emptyActive
-                      : filter === 'done'
-                      ? t.emptyDone
-                      : t.emptyDueSoon}
+                      : t.emptyDone}
                   </p>
                 </div>
               ) : (
                 <ul>
-                  {filtered.map((todo, idx) => {
-                    const dueStatus = getDueStatus(todo);
-                    const isOverdue = dueStatus === 'overdue';
-                    const isDueSoon = dueStatus === 'dueSoon';
+                  {filtered.map((todo, idx) => (
+                    <li
+                      key={todo.id}
+                      className={`relative flex items-center gap-3 px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${
+                        idx !== filtered.length - 1
+                          ? 'border-b border-gray-50 dark:border-slate-700/50'
+                          : ''
+                      } ${todo.priority === 'P0' ? 'border-l-4 border-red-500' : ''}`}
+                    >
+                      <button
+                        onClick={() =>
+                          setPriorityMenuOpen(priorityMenuOpen === todo.id ? null : todo.id)
+                        }
+                        className="relative flex-shrink-0 transition-transform hover:scale-110"
+                        style={{ color: PRIORITY_CONFIG[todo.priority].color }}
+                        title={t.priority}
+                      >
+                        {PRIORITY_CONFIG[todo.priority].emoji}
+                      </button>
 
-                    return (
-                      <li
-                        key={todo.id}
-                        className={`flex items-center gap-3 px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${
-                          idx !== filtered.length - 1
-                            ? 'border-b border-gray-50 dark:border-slate-700/50'
-                            : ''
-                        } ${
-                          isOverdue && !todo.done
-                            ? 'bg-red-50 dark:bg-red-900/10 border-l-4 border-l-red-500'
-                            : isDueSoon && !todo.done
-                            ? 'bg-amber-50 dark:bg-amber-900/10 border-l-4 border-l-amber-400'
-                            : ''
+                      {priorityMenuOpen === todo.id && (
+                        <PrioritySelector
+                          todoId={todo.id}
+                          currentPriority={todo.priority}
+                          onSelect={setPriority}
+                          onClose={() => setPriorityMenuOpen(null)}
+                        />
+                      )}
+
+                      <button
+                        onClick={() => toggleTodo(todo.id)}
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          todo.done
+                            ? 'bg-green-500 border-green-500 text-white'
+                            : 'border-gray-300 dark:border-slate-500 hover:border-indigo-400 dark:hover:border-indigo-400'
                         }`}
                       >
-                        <button
-                          onClick={() => toggleTodo(todo.id)}
-                          className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                            todo.done
-                              ? 'bg-green-500 border-green-500 text-white'
-                              : 'border-gray-300 dark:border-slate-500 hover:border-indigo-400 dark:hover:border-indigo-400'
-                          }`}
-                        >
-                          {todo.done && '✓'}
-                        </button>
+                        {todo.done && '✓'}
+                      </button>
 
-                        <div className="flex-1 min-w-0">
-                          <span
-                            className={`text-lg transition-all block truncate ${
-                              todo.done
-                                ? 'text-gray-400 dark:text-slate-500 line-through'
-                                : isOverdue
-                                ? 'text-red-600 dark:text-red-400'
-                                : isDueSoon
-                                ? 'text-amber-600 dark:text-amber-400'
-                                : 'text-gray-800 dark:text-slate-100'
-                            }`}
-                          >
-                            {todo.text}
-                          </span>
-                          {todo.dueDate !== null && (
-                            <span
-                              className={`text-xs mt-0.5 block ${
-                                todo.done
-                                  ? 'text-gray-400 dark:text-slate-500'
-                                  : isOverdue
-                                  ? 'text-red-500 dark:text-red-400 font-medium'
-                                  : isDueSoon
-                                  ? 'text-amber-500 dark:text-amber-400'
-                                  : 'text-gray-400 dark:text-slate-500'
-                              }`}
-                            >
-                              {isOverdue && '⚠️ '}
-                              {isDueSoon && '📅 '}
-                              {formatDueDate(todo.dueDate, lang)}
-                            </span>
-                          )}
-                        </div>
+                      <span
+                        className={`flex-1 text-lg transition-all ${
+                          todo.done
+                            ? 'text-gray-400 dark:text-slate-500 line-through'
+                            : todo.priority === 'P0'
+                            ? 'text-gray-800 dark:text-slate-100 font-semibold'
+                            : 'text-gray-800 dark:text-slate-100'
+                        }`}
+                      >
+                        {todo.text}
+                      </span>
 
-                        <DatePickerButton
-                          dueDate={todo.dueDate}
-                          onSet={(ts) => setDueDate(todo.id, ts)}
-                          lang={lang}
-                          t={t}
-                        />
-
-                        <button
-                          onClick={() => togglePin(todo.id)}
-                          className={`text-base transition-colors ${
-                            todo.pinned
-                              ? 'text-amber-400 hover:text-amber-600'
-                              : 'text-gray-300 hover:text-amber-400'
-                          }`}
-                          title={todo.pinned ? t.unpin : t.pin}
-                        >
-                          📌
-                        </button>
-                        <button
-                          onClick={() => deleteTodo(todo.id)}
-                          className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors text-sm"
-                          title={t.delete}
-                        >
-                          🗑️
-                        </button>
-                      </li>
-                    );
-                  })}
+                      <button
+                        onClick={() => togglePin(todo.id)}
+                        className={`text-base transition-colors ${
+                          todo.pinned
+                            ? 'text-amber-400 hover:text-amber-600'
+                            : 'text-gray-300 hover:text-amber-400'
+                        }`}
+                        title={todo.pinned ? t.unpin : t.pin}
+                      >
+                        📌
+                      </button>
+                      <button
+                        onClick={() => deleteTodo(todo.id)}
+                        className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors text-sm"
+                        title={t.delete}
+                      >
+                        🗑️
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>
@@ -520,67 +483,5 @@ export default function TodoMCVPage() {
         </div>
       </LangContext.Provider>
     </ThemeContext.Provider>
-  );
-}
-
-interface DatePickerButtonProps {
-  dueDate: number | null;
-  onSet: (ts: number | null) => void;
-  lang: Lang;
-  t: typeof translations.zh;
-}
-
-function DatePickerButton({ dueDate, onSet, lang, t }: DatePickerButtonProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    if (!val) {
-      onSet(null);
-      return;
-    }
-    const date = new Date(val);
-    date.setHours(23, 59, 59, 999);
-    onSet(date.getTime());
-  };
-
-  const openPicker = () => {
-    inputRef.current?.showPicker?.();
-  };
-
-  const displayDate =
-    dueDate !== null ? new Date(dueDate).toISOString().split('T')[0] : '';
-
-  return (
-    <div className="relative flex items-center">
-      <button
-        onClick={openPicker}
-        className={`text-sm transition-colors px-2 py-1 rounded-lg border ${
-          dueDate !== null
-            ? 'text-indigo-500 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'
-            : 'text-gray-400 dark:text-slate-500 border-gray-200 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700'
-        }`}
-        title={t.setDueDate}
-      >
-        📅
-      </button>
-      <input
-        ref={inputRef}
-        type="date"
-        value={displayDate}
-        onChange={handleChange}
-        className="absolute opacity-0 w-0 h-0 pointer-events-none"
-        tabIndex={-1}
-      />
-      {dueDate !== null && (
-        <button
-          onClick={() => onSet(null)}
-          className="text-gray-400 hover:text-red-400 dark:text-slate-500 dark:hover:text-red-400 transition-colors text-xs ml-1"
-          title={t.clearDueDate}
-        >
-          ✕
-        </button>
-      )}
-    </div>
   );
 }
