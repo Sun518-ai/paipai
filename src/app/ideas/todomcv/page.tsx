@@ -99,44 +99,42 @@ export default function TodoMCVPage() {
 
   const t = translations[lang];
 
-  // Apply theme to <html> element
+  // Apply theme to <html> element (avoids hydration mismatch — called after mount)
   const applyTheme = (th: Theme) => {
     document.documentElement.dataset.theme = th;
   };
 
-  // Load preferences and todos from localStorage
+  // Load preferences and todos from localStorage (client-only to avoid hydration mismatch)
   useEffect(() => {
     loadHybrid<Lang>('paipai-todomcv-lang', 'zh').then((l) => setLang(l));
     loadHybrid<Todo[]>('paipai-todos', []).then(setTodos);
-    loadHybrid<Theme>('paipai-todomcv-theme', 'light').then((th) => {
-      // If stored value is 'system', resolve from OS preference
-      if (th === 'light' || th === 'dark') {
-        setTheme(th);
-        applyTheme(th);
-      } else {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const resolved = prefersDark ? 'dark' : 'light';
-        setTheme(resolved);
-        applyTheme(resolved);
-      }
-    });
+    const storedTheme = localStorage.getItem('paipai-todomcv-theme');
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      setTheme(storedTheme);
+      applyTheme(storedTheme);
+    } else {
+      // System preference (or absent) — resolve from OS
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const resolved = prefersDark ? 'dark' : 'light';
+      setTheme(resolved);
+      applyTheme(resolved);
+    }
   }, []);
 
-  // Listen for system theme changes
+  // Listen for system theme changes — only active when user has not set manual preference
   useEffect(() => {
-    const stored = localStorage.getItem('paipai-todomcv-theme');
-    if (stored && stored !== 'light' && stored !== 'dark') {
-      // System preference
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = (e: MediaQueryListEvent) => {
-        const resolved = e.matches ? 'dark' : 'light';
-        setTheme(resolved);
-        applyTheme(resolved);
-      };
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    }
-  }, [theme]);
+    const storedTheme = localStorage.getItem('paipai-todomcv-theme');
+    if (storedTheme !== null && storedTheme !== 'system') return; // manual preference set, skip
+
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => {
+      const resolved = e.matches ? 'dark' : 'light';
+      setTheme(resolved);
+      applyTheme(resolved);
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []); // empty deps — set up once on mount
 
   // Focus input on mount
   useEffect(() => {
@@ -225,9 +223,9 @@ export default function TodoMCVPage() {
             </Link>
             <button
               onClick={toggleTheme}
-              aria-label={theme === 'light' ? t.toggleTheme : t.toggleTheme}
+              aria-label={theme === 'light' ? '切换到深色模式' : 'Switch to light mode'}
               className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-all text-lg"
-              title={theme === 'light' ? t.toggleTheme : t.toggleTheme}
+              title={theme === 'light' ? '深色模式' : 'Light Mode'}
             >
               {theme === 'light' ? '🌙' : '☀️'}
             </button>
