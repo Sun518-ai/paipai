@@ -17,6 +17,9 @@
 | 优先级 | 名称 | 颜色 | 图标 | 说明 |
 |--------|------|------|------|------|
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 55ed72a (feat: add task priority levels P0-P3)
 | P0 | 紧急 | 红色 `#EF4444` | 🔴 | 最紧急，需要立刻处理 |
 | P1 | 高 | 橙色 `#F97316` | 🟠 | 重要，近期需要完成 |
 | P2 | 中 | 蓝色 `#3B82F6` | 🔵 | 普通优先级 |
@@ -63,7 +66,11 @@
 ### 4.2 任务行布局
 
 ```
+<<<<<<< HEAD
 [P0图标] [checkbox] 任务文字                    [📌] [🗑️]
+=======
+[P0图标] [checkbox] 任务文字  [📌] [🗑️]
+>>>>>>> 55ed72a (feat: add task priority levels P0-P3)
 ```
 
 ## 5. 数据模型
@@ -91,6 +98,9 @@ interface Todo {
 - [ ] 优先级修改自动持久化到 localStorage
 - [ ] 新增任务默认优先级为 P3
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 55ed72a (feat: add task priority levels P0-P3)
 - [ ] 切换语言时优先级名称正确切换
 - [ ] `npm run build` 通过
 - [ ] commit 符合 conventional commits 规范
