@@ -9,6 +9,7 @@ interface Todo {
   text: string;
   done: boolean;
   createdAt: number;
+  pinned: boolean;
 }
 
 type Lang = 'zh' | 'en';
@@ -52,6 +53,12 @@ const translations = {
     clearDone: 'Clear Completed',
     toggleLang: '中',
     toggleTheme: 'Dark Mode',
+    toggleTheme: '深色模式',
+    pin: '置顶',
+    unpin: '取消置顶',
+    toggleTheme: '深色模式',
+    pin: '置顶',
+    unpin: '取消置顶',
   },
 };
 
@@ -172,7 +179,7 @@ export default function TodoMCVPage() {
     const text = input.trim();
     if (!text) return;
     setTodos((prev) => [
-      { id: genId(), text, done: false, createdAt: Date.now() },
+      { id: genId(), text, done: false, pinned: false, createdAt: Date.now() },
       ...prev,
     ]);
     setInput('');
@@ -184,6 +191,12 @@ export default function TodoMCVPage() {
     );
   };
 
+  const togglePin = (id: string) => {
+    setTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t))
+    );
+  };
+
   const deleteTodo = (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
   };
@@ -192,11 +205,17 @@ export default function TodoMCVPage() {
     setTodos((prev) => prev.filter((t) => !t.done));
   };
 
-  const filtered = todos.filter((t) => {
-    if (filter === 'active') return !t.done;
-    if (filter === 'done') return t.done;
-    return true;
-  });
+  const filtered = todos
+    .filter((t) => {
+      if (filter === 'active') return !t.done;
+      if (filter === 'done') return t.done;
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return b.createdAt - a.createdAt;
+    });
 
   const activeCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.length - activeCount;
@@ -327,6 +346,17 @@ export default function TodoMCVPage() {
                       >
                         {todo.text}
                       </span>
+                      <button
+                        onClick={() => togglePin(todo.id)}
+                        className={`text-base transition-colors ${
+                          todo.pinned
+                            ? 'text-amber-400 hover:text-amber-600'
+                            : 'text-gray-300 hover:text-amber-400'
+                        }`}
+                        title={todo.pinned ? (t.unpin || '取消置顶') : (t.pin || '置顶')}
+                      >
+                        📌
+                      </button>
                       <button
                         onClick={() => deleteTodo(todo.id)}
                         className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors text-sm"
