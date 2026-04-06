@@ -7,6 +7,15 @@ import { loadHybrid, saveHybrid } from '@/lib/localStore';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+type RecurringType = 'none' | 'daily' | 'weekly' | 'monthly';
+
+interface RecurringRule {
+  type: RecurringType;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  lastGeneratedAt: number;
+  seriesCreatedAt: number;
+}
 
 interface Todo {
   id: string;
@@ -16,6 +25,9 @@ interface Todo {
   updatedAt?: number;
   pinned: boolean;
   priority: Priority;
+  tagIds: string[];
+  dueDate?: number;
+  recurring?: RecurringRule;
 }
 
 interface DailyCheckin {

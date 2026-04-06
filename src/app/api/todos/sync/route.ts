@@ -8,6 +8,14 @@ const BITABLE_TABLE_ID = process.env.FEISHU_TODOS_TABLE_ID || 'tblBIQSAzYz9uG0x'
 let tokenCache = '';
 let tokenExpire = 0;
 
+interface RecurringRule {
+  type: 'none' | 'daily' | 'weekly' | 'monthly';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  lastGeneratedAt: number;
+  seriesCreatedAt: number;
+}
+
 interface Todo {
   id: string;
   localId: string;
@@ -16,9 +24,11 @@ interface Todo {
   done: boolean;
   pinned: boolean;
   priority: string;
+  tagIds: string[];
   createdAt: number;
   updatedAt: number;
   dueDate?: number;
+  recurring?: RecurringRule;
 }
 
 async function getToken(): Promise<string | null> {
@@ -71,6 +81,8 @@ export async function GET() {
       createdAt: (item.fields.createdAt as number) || Date.now(),
       updatedAt: (item.fields.updatedAt as number) || Date.now(),
       dueDate: item.fields.dueDate as number | undefined,
+      tagIds: (item.fields.tagIds as string[]) || [],
+      recurring: item.fields.recurring as RecurringRule | undefined,
     })).filter(t => t.text !== '');
 
     return NextResponse.json({ ok: true, todos, lastSync: Date.now() });
@@ -106,6 +118,12 @@ export async function POST(req: NextRequest) {
       };
       if (todo.dueDate) {
         fields.dueDate = todo.dueDate;
+      }
+      if (todo.tagIds && todo.tagIds.length > 0) {
+        fields.tagIds = todo.tagIds;
+      }
+      if (todo.recurring) {
+        fields.recurring = todo.recurring;
       }
 
       if (todo.recordId) {
