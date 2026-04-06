@@ -1,18 +1,23 @@
-"'use client'";
+'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
+import { pushToCloud, mergeTodos, type SyncStatus, type Todo as SyncTodo } from '@/lib/todoSync';
 
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
 interface Todo {
   id: string;
+  localId: string;
+  recordId?: string;
   text: string;
   done: boolean;
   createdAt: number;
+  updatedAt: number;
   pinned: boolean;
   priority: Priority;
+  dueDate?: number;
 }
 
 type Lang = 'zh' | 'en';
@@ -178,7 +183,11 @@ export default function TodoMCVPage() {
   const [input, setInput] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
   const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncError, setSyncError] = useState<string>('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncingRef = useRef(false);
 
   const t = translations[lang];
 
@@ -186,9 +195,9 @@ export default function TodoMCVPage() {
     document.documentElement.dataset.theme = th;
   };
 
+  // Load initial data: merge local + cloud
   useEffect(() => {
     loadHybrid<Lang>('paipai-todomcv-lang', 'zh').then((l) => setLang(l));
-    loadHybrid<Todo[]>('paipai-todos', []).then(setTodos);
     const storedTheme = localStorage.getItem('paipai-todomcv-theme');
     if (storedTheme === 'light' || storedTheme === 'dark') {
       setTheme(storedTheme);
@@ -199,6 +208,41 @@ export default function TodoMCVPage() {
       setTheme(resolved);
       applyTheme(resolved);
     }
+
+    // Load todos from local first, then try to merge with cloud
+    loadHybrid<Todo[]>('paipai-todos', []).then(async (localTodos) => {
+      // Migrate old todos without localId
+      const migrated = localTodos.map((t) => ({
+        ...t,
+        localId: (t as SyncTodo).localId || t.id,
+        updatedAt: (t as SyncTodo).updatedAt || t.createdAt,
+      }));
+
+      if (!navigator.onLine) {
+        setTodos(migrated);
+        setSyncStatus('offline');
+        return;
+      }
+
+      setSyncStatus('syncing');
+      try {
+        const res = await fetch('/api/todos/sync', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json() as { ok: boolean; todos: Todo[]; error?: string };
+        if (!json.ok) throw new Error(json.error || 'unknown error');
+        const merged = mergeTodos(migrated, json.todos || []);
+        saveHybrid('paipai-todos', merged);
+        setTodos(merged);
+        setSyncStatus('synced');
+        // Reset to idle after 2s
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } catch (e) {
+        console.warn('[todoSync] initial load failed, using local:', e);
+        setTodos(migrated);
+        setSyncStatus('error');
+        setSyncError(String(e));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -213,6 +257,48 @@ export default function TodoMCVPage() {
     mq.addEventListener('change', handler);
     return () => mq.removeEventListener('change', handler);
   }, []);
+
+  // Debounced sync to cloud when todos change
+  useEffect(() => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      if (!navigator.onLine || syncingRef.current) return;
+      syncingRef.current = true;
+      setSyncStatus('syncing');
+      const ok = await pushToCloud(todos);
+      syncingRef.current = false;
+      if (ok) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } else {
+        setSyncStatus('error');
+      }
+    }, 500);
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [todos]);
+
+  // Online/offline listener
+  useEffect(() => {
+    const handleOnline = async () => {
+      setSyncStatus('syncing');
+      const ok = await pushToCloud(todos);
+      if (ok) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } else {
+        setSyncStatus('error');
+      }
+    };
+    const handleOffline = () => setSyncStatus('offline');
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [todos]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -245,8 +331,10 @@ export default function TodoMCVPage() {
   const addTodo = () => {
     const text = input.trim();
     if (!text) return;
+    const now = Date.now();
+    const id = genId();
     setTodos((prev) => [
-      { id: genId(), text, done: false, pinned: false, createdAt: Date.now(), priority: 'P3' as Priority },
+      { id, localId: id, text, done: false, pinned: false, createdAt: now, updatedAt: now, priority: 'P3' as Priority },
       ...prev,
     ]);
     setInput('');
@@ -254,19 +342,19 @@ export default function TodoMCVPage() {
 
   const toggleTodo = (id: string) => {
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+      prev.map((t) => (t.id === id ? { ...t, done: !t.done, updatedAt: Date.now() } : t))
     );
   };
 
   const togglePin = (id: string) => {
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t))
+      prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned, updatedAt: Date.now() } : t))
     );
   };
 
   const setPriority = (id: string, p: Priority) => {
     setTodos((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, priority: p } : t))
+      prev.map((t) => (t.id === id ? { ...t, priority: p, updatedAt: Date.now() } : t))
     );
   };
 
@@ -328,6 +416,26 @@ export default function TodoMCVPage() {
             >
               {t.toggleLang}
             </button>
+            {/* Sync status indicator */}
+            <div className="flex items-center gap-1 text-xs min-w-[80px] justify-end">
+              {syncStatus === 'syncing' && (
+                <span className="text-indigo-500 dark:text-indigo-400">🔄 同步中</span>
+              )}
+              {syncStatus === 'synced' && (
+                <span className="text-green-500 dark:text-green-400">✅ 已同步</span>
+              )}
+              {syncStatus === 'offline' && (
+                <span className="text-amber-500 dark:text-amber-400">⚠️ 离线</span>
+              )}
+              {syncStatus === 'error' && (
+                <span
+                  className="text-red-500 dark:text-red-400 cursor-help"
+                  title={syncError}
+                >
+                  ❌ 同步失败
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="max-w-2xl mx-auto px-6 py-10">
