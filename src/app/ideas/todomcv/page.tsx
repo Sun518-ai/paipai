@@ -716,6 +716,7 @@ export default function TodoMCVPage() {
         const now = Date.now();
         const newTask: Todo = {
           id: genId(),
+          localId: genId(),
           text: task.text,
           done: false,
           pinned: false,
