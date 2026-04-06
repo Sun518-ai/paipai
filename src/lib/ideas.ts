@@ -9,6 +9,15 @@ export interface Idea {
 }
 
 export const ideas: Idea[] = [
+  {
+    id: 'dashboard',
+    title: '数据看板',
+    description: '📊 聚合任务完成率、专注时长、连续打卡天数，用数据激励坚持！环形进度、趋势图、打卡记录一目了然。',
+    tags: ['数据', '可视化', '激励', '统计'],
+    status: 'done',
+    date: '2026-04-06',
+    icon: '📊',
+  },
 
   {
     id: 'mira-skill',
