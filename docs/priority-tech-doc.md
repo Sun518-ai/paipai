@@ -9,7 +9,7 @@
 **文件**: `src/app/ideas/todomcv/page.tsx`
 
 ```typescript
-// 新增 priority 字段到 Todo interface
+type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 interface Todo {
   id: string;
   text: string;
@@ -23,8 +23,6 @@ interface Todo {
 ## 3. 优先级配置
 
 ```typescript
-type Priority = 'P0' | 'P1' | 'P2' | 'P3';
-
 const PRIORITY_CONFIG: Record<Priority, { label: string; labelEn: string; color: string; emoji: string }> = {
   P0: { label: '紧急', labelEn: 'Urgent',   color: '#EF4444', emoji: '🔴' },
   P1: { label: '高',   labelEn: 'High',     color: '#F97316', emoji: '🟠' },
