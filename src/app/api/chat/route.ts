@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getModel, MINIMAX_MODEL } from '@/lib/aiProvider';
 import { TOOLS, ToolName } from '@/lib/todoTools';
 
 const APP_ID = process.env.FEISHU_APP_ID || 'cli_a934b5afcc5d5cd3';
 const APP_SECRET = process.env.FEISHU_APP_SECRET || '3SoEuoKZbtNweBtt5O0aVdqYeilzLnqw';
 const BITABLE_APP_TOKEN = 'RbB2bGUENaqvoUsJ0MQcJoQinIh';
 const BITABLE_TABLE_ID = 'tblBIQSAzYz9uG0x';
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || '';
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
 const MINIMAX_BASE_URL = process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com';
 
 // ─── Bitable Helpers ───────────────────────────────────────────────────────────
@@ -123,8 +124,7 @@ async function executeTool(name: ToolName, args: Record<string, unknown>): Promi
   switch (name) {
     case 'create_todo': {
       const { text, priority = 'P3', dueDate, tags = [] } = args;
-      const dueTs = dueDate ? new Date(dueDate as string).getTime() : undefined;
-      const recordId = await createTodo(text as string, priority as string, dueDate as string | undefined, tags as string[]);
+      await createTodo(text as string, priority as string, dueDate as string | undefined, tags as string[]);
       return `✅ 已创建任务「${text}」${priority !== 'P3' ? `(优先级 ${priority})` : ''}${dueDate ? `，截止日期 ${dueDate}` : ''}`;
     }
     case 'list_todos': {
@@ -159,9 +159,16 @@ async function executeTool(name: ToolName, args: Record<string, unknown>): Promi
   }
 }
 
-// ─── MiniMax API ──────────────────────────────────────────────────────────────
+// ─── MiniMax API (via unified provider) ───────────────────────────────────────
 
+/**
+ * Call MiniMax chat API using the unified provider's model configuration.
+ * The getModel() validates that MINIMAX_API_KEY is set.
+ */
 async function chatWithMiniMax(messages: Array<{ role: string; content: string }>, tools: unknown[]) {
+  // getModel() will throw if MINIMAX_API_KEY is not set (serves as validation)
+  getModel();
+
   const response = await fetch(`${MINIMAX_BASE_URL}/v1/text/chatcompletion_v2`, {
     method: 'POST',
     headers: {
@@ -169,7 +176,7 @@ async function chatWithMiniMax(messages: Array<{ role: string; content: string }
       'Authorization': `Bearer ${MINIMAX_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'MiniMax-Text-01',
+      model: MINIMAX_MODEL,
       messages,
       tools,
       tool_choice: 'auto',
@@ -196,7 +203,6 @@ export async function POST(req: NextRequest) {
     // First call - let MiniMax decide if it needs tools
     const aiResponse = await chatWithMiniMax(messages, TOOLS);
 
-    const finishReason = aiResponse.choices?.[0]?.finish_reason;
     const toolCalls = aiResponse.choices?.[0]?.message?.tool_calls;
 
     if (toolCalls && toolCalls.length > 0) {
@@ -213,7 +219,11 @@ export async function POST(req: NextRequest) {
       const messagesWithResults = [
         ...messages,
         aiResponse.choices?.[0]?.message,
-        { role: 'tool', tool_call_id: toolResults[0]?.tool_call_id, content: toolResults.map(r => `[${r.name}] ${r.content}`).join('\n') }
+        {
+          role: 'tool',
+          tool_call_id: toolResults[0]?.tool_call_id,
+          content: toolResults.map(r => `[${r.name}] ${r.content}`).join('\n')
+        }
       ];
 
       const finalResponse = await chatWithMiniMax(messagesWithResults, TOOLS);
