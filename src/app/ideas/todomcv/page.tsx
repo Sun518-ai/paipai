@@ -1,10 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
+import { pushToCloud, mergeTodos, type SyncStatus, type Todo as SyncTodo } from '@/lib/todoSync';
 
+type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 type RecurringType = 'none' | 'daily' | 'weekly' | 'monthly';
+
+const PRIORITY_CONFIG: Record<Priority, { label: string; labelEn: string; color: string; emoji: string }> = {
+  P0: { label: '紧急', labelEn: 'Urgent', color: '#EF4444', emoji: '🔴' },
+  P1: { label: '高', labelEn: 'High', color: '#F97316', emoji: '🟠' },
+  P2: { label: '中', labelEn: 'Medium', color: '#3B82F6', emoji: '🔵' },
+  P3: { label: '低', labelEn: 'Low', color: '#9CA3AF', emoji: '⚪' },
+};
+
+const PRIORITY_ORDER: Record<Priority, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
 
 interface RecurringRule {
   type: RecurringType;
@@ -16,11 +27,15 @@ interface RecurringRule {
 
 interface Todo {
   id: string;
+  localId: string;
+  recordId?: string;
   text: string;
   done: boolean;
   createdAt: number;
+  updatedAt: number;
   pinned: boolean;
-  dueDate: number | null;
+  priority: Priority;
+  dueDate?: number;
   recurring?: RecurringRule;
   completedAt?: number;
 }
@@ -154,7 +169,7 @@ function getRecurringLabel(rule: RecurringRule, t: typeof translations.zh): stri
 }
 
 function getDueStatus(todo: Todo): DueStatus {
-  if (todo.done || todo.dueDate === null) return 'normal';
+  if (todo.done || todo.dueDate === undefined || todo.dueDate === null) return 'normal';
   const diff = todo.dueDate - Date.now();
   if (diff < 0) return 'overdue';
   if (diff <= 24 * 60 * 60 * 1000) return 'dueSoon';
@@ -247,7 +262,7 @@ function RecurringBadge({ rule }: { rule: RecurringRule }) {
   );
 }
 
-function DatePickerButton({ dueDate, onSet, t }: { dueDate: number | null; onSet: (ts: number | null) => void; t: typeof translations.zh }) {
+function DatePickerButton({ dueDate, onSet, t }: { dueDate: number | null | undefined; onSet: (ts: number | null) => void; t: typeof translations.zh }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -256,14 +271,14 @@ function DatePickerButton({ dueDate, onSet, t }: { dueDate: number | null; onSet
     date.setHours(23, 59, 59, 999);
     onSet(date.getTime());
   };
-  const displayDate = dueDate !== null ? new Date(dueDate).toISOString().split('T')[0] : '';
+  const displayDate = dueDate !== null && dueDate !== undefined ? new Date(dueDate).toISOString().split('T')[0] : '';
   return (
     <div className="relative flex items-center">
       <button onClick={() => inputRef.current?.showPicker?.()}
-        className={`text-sm transition-colors px-2 py-1 rounded-lg border ${dueDate !== null ? 'text-indigo-500 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30' : 'text-gray-400 dark:text-slate-500 border-gray-200 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700'}`}
+        className={`text-sm transition-colors px-2 py-1 rounded-lg border ${dueDate !== null && dueDate !== undefined ? 'text-indigo-500 dark:text-indigo-400 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30' : 'text-gray-400 dark:text-slate-500 border-gray-200 dark:border-slate-600 hover:bg-gray-100 dark:hover:bg-slate-700'}`}
         title={t.setDueDate}>📅</button>
       <input ref={inputRef} type="date" value={displayDate} onChange={handleChange} className="absolute opacity-0 w-0 h-0 pointer-events-none" tabIndex={-1} />
-      {dueDate !== null && <button onClick={() => onSet(null)} className="text-gray-400 hover:text-red-400 dark:text-slate-500 dark:hover:text-red-400 transition-colors text-xs ml-1" title={t.clearDueDate}>✕</button>}
+      {dueDate !== null && dueDate !== undefined && <button onClick={() => onSet(null)} className="text-gray-400 hover:text-red-400 dark:text-slate-500 dark:hover:text-red-400 transition-colors text-xs ml-1" title={t.clearDueDate}>✕</button>}
     </div>
   );
 }
@@ -274,18 +289,23 @@ export default function TodoMCVPage() {
   const [theme, setTheme] = useState<Theme>('light');
   const [input, setInput] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'dueSoon'>('all');
+  const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncError, setSyncError] = useState<string>('');
   const [sortByDue, setSortByDue] = useState(false);
   const [recurringType, setRecurringType] = useState<RecurringType>('none');
   const [dayOfWeek, setDayOfWeek] = useState(new Date().getDay());
   const [dayOfMonth, setDayOfMonth] = useState(new Date().getDate());
   const inputRef = useRef<HTMLInputElement>(null);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncingRef = useRef(false);
   const t = translations[lang];
 
   const applyTheme = (th: Theme) => { document.documentElement.dataset.theme = th; };
 
+  // Load initial data: merge local + cloud
   useEffect(() => {
     loadHybrid<Lang>('paipai-todomcv-lang', 'zh').then((l) => setLang(l));
-    loadHybrid<Todo[]>('paipai-todos', []).then((todos) => setTodos(todos.map((t) => ({ ...t, dueDate: (t as Todo).dueDate ?? null }))));
     const storedTheme = localStorage.getItem('paipai-todomcv-theme');
     if (storedTheme === 'light' || storedTheme === 'dark') { setTheme(storedTheme); applyTheme(storedTheme); }
     else {
@@ -294,6 +314,43 @@ export default function TodoMCVPage() {
       setTheme(resolved);
       applyTheme(resolved);
     }
+
+    // Load todos from local first, then try to merge with cloud
+    loadHybrid<Todo[]>('paipai-todos', []).then(async (localTodos) => {
+      // Migrate old todos without localId
+      const migrated = localTodos.map((t) => ({
+        ...t,
+        localId: (t as SyncTodo).localId || t.id,
+        updatedAt: (t as SyncTodo).updatedAt || t.createdAt,
+        priority: (t as Todo).priority || 'P3' as Priority,
+        dueDate: (t as Todo).dueDate ?? undefined,
+      }));
+
+      if (!navigator.onLine) {
+        setTodos(migrated);
+        setSyncStatus('offline');
+        return;
+      }
+
+      setSyncStatus('syncing');
+      try {
+        const res = await fetch('/api/todos/sync', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json() as { ok: boolean; todos: Todo[]; error?: string };
+        if (!json.ok) throw new Error(json.error || 'unknown error');
+        const merged = mergeTodos(migrated, json.todos || []);
+        saveHybrid('paipai-todos', merged);
+        setTodos(merged);
+        setSyncStatus('synced');
+        // Reset to idle after 2s
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } catch (e) {
+        console.warn('[todoSync] initial load failed, using local:', e);
+        setTodos(migrated);
+        setSyncStatus('error');
+        setSyncError(String(e));
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -305,10 +362,63 @@ export default function TodoMCVPage() {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => { saveHybrid('paipai-todos', todos); }, [todos]);
-  useEffect(() => { saveHybrid('paipai-todomcv-lang', lang); }, [lang]);
-  useEffect(() => { saveHybrid('paipai-todomcv-theme', theme); }, [theme]);
+  // Debounced sync to cloud when todos change
+  useEffect(() => {
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      if (!navigator.onLine || syncingRef.current) return;
+      syncingRef.current = true;
+      setSyncStatus('syncing');
+      const ok = await pushToCloud(todos);
+      syncingRef.current = false;
+      if (ok) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } else {
+        setSyncStatus('error');
+      }
+    }, 500);
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [todos]);
+
+  // Online/offline listener
+  useEffect(() => {
+    const handleOnline = async () => {
+      setSyncStatus('syncing');
+      const ok = await pushToCloud(todos);
+      if (ok) {
+        setSyncStatus('synced');
+        setTimeout(() => setSyncStatus('idle'), 2000);
+      } else {
+        setSyncStatus('error');
+      }
+    };
+    const handleOffline = () => setSyncStatus('offline');
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [todos]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    saveHybrid('paipai-todos', todos);
+  }, [todos]);
+
+  useEffect(() => {
+    saveHybrid('paipai-todomcv-lang', lang);
+  }, [lang]);
+
+  useEffect(() => {
+    saveHybrid('paipai-todomcv-theme', theme);
+  }, [theme]);
 
   const toggleLang = () => setLang((prev) => (prev === 'zh' ? 'en' : 'zh'));
   const toggleTheme = () => { setTheme((prev) => { const next = prev === 'light' ? 'dark' : 'light'; applyTheme(next); return next; }); };
@@ -318,9 +428,26 @@ export default function TodoMCVPage() {
     const text = input.trim();
     if (!text) return;
     const now = Date.now();
-    const newTodo: Todo = { id: genId(), text, done: false, pinned: false, createdAt: now, dueDate: null, completedAt: undefined };
+    const id = genId();
+    const newTodo: Todo = {
+      id,
+      localId: id,
+      text,
+      done: false,
+      pinned: false,
+      createdAt: now,
+      updatedAt: now,
+      priority: 'P3' as Priority,
+      dueDate: undefined,
+    };
     if (recurringType !== 'none') {
-      newTodo.recurring = { type: recurringType, dayOfWeek: recurringType === 'weekly' ? dayOfWeek : undefined, dayOfMonth: recurringType === 'monthly' ? dayOfMonth : undefined, lastGeneratedAt: now, seriesCreatedAt: now };
+      newTodo.recurring = {
+        type: recurringType,
+        dayOfWeek: recurringType === 'weekly' ? dayOfWeek : undefined,
+        dayOfMonth: recurringType === 'monthly' ? dayOfMonth : undefined,
+        lastGeneratedAt: now,
+        seriesCreatedAt: now
+      };
     }
     setTodos((prev) => [newTodo, ...prev]);
     setInput('');
@@ -331,47 +458,82 @@ export default function TodoMCVPage() {
     setTodos((prev) => {
       const task = prev.find((t) => t.id === id);
       if (!task) return prev;
+      // Handle recurring task completion - generate next occurrence
       if (!task.done && task.recurring && task.recurring.type !== 'none') {
         const now = Date.now();
-        const newTask: Todo = { id: genId(), text: task.text, done: false, pinned: false, createdAt: now, dueDate: null, completedAt: undefined, recurring: { ...task.recurring, lastGeneratedAt: now, seriesCreatedAt: task.recurring.seriesCreatedAt } };
-        return [...prev.map((t) => t.id === id ? { ...t, done: true, completedAt: now } : t), newTask];
+        const newTask: Todo = {
+          id: genId(),
+          text: task.text,
+          done: false,
+          pinned: false,
+          createdAt: now,
+          updatedAt: now,
+          priority: task.priority,
+          dueDate: undefined,
+          recurring: { ...task.recurring, lastGeneratedAt: now, seriesCreatedAt: task.recurring.seriesCreatedAt }
+        };
+        return [...prev.map((t) => t.id === id ? { ...t, done: true, completedAt: now, updatedAt: now } : t), newTask];
       }
-      return prev.map((t) => t.id === id ? { ...t, done: !t.done } : t);
+      return prev.map((t) => t.id === id ? { ...t, done: !t.done, updatedAt: Date.now() } : t);
     });
   };
 
-  const togglePin = (id: string) => setTodos((prev) => prev.map((t) => t.id === id ? { ...t, pinned: !t.pinned } : t));
-  const deleteTodo = (id: string) => setTodos((prev) => prev.filter((t) => t.id !== id));
-  const clearDone = () => setTodos((prev) => prev.filter((t) => !t.done));
-  const setDueDate = (id: string, timestamp: number | null) => setTodos((prev) => prev.map((t) => t.id === id ? { ...t, dueDate: timestamp } : t));
+  const togglePin = (id: string) => {
+    setTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, pinned: !t.pinned, updatedAt: Date.now() } : t))
+    );
+  };
 
-  const filtered = todos.filter((t) => {
-    if (filter === 'active') return !t.done;
-    if (filter === 'done') return t.done;
-    if (filter === 'dueSoon') return getDueStatus(t) === 'dueSoon';
-    return true;
-  }).sort((a, b) => {
-    if (a.pinned && !b.pinned) return -1;
-    if (!a.pinned && b.pinned) return 1;
-    if (sortByDue) {
-      const statusOrder: Record<DueStatus, number> = { overdue: 0, dueSoon: 1, normal: 2 };
-      if (a.dueDate === null && b.dueDate !== null) return 1;
-      if (b.dueDate === null && a.dueDate !== null) return -1;
-      if (a.dueDate === null) return b.createdAt - a.createdAt;
+  const setPriority = (id: string, p: Priority) => {
+    setTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, priority: p, updatedAt: Date.now() } : t))
+    );
+  };
+
+  const deleteTodo = (id: string) => {
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const clearDone = () => {
+    setTodos((prev) => prev.filter((t) => !t.done));
+  };
+
+  const setDueDate = (id: string, timestamp: number | null) => {
+    setTodos((prev) => prev.map((t) => t.id === id ? { ...t, dueDate: timestamp ?? undefined, updatedAt: Date.now() } : t));
+  };
+
+  const filtered = todos
+    .filter((t) => {
+      if (filter === 'active') return !t.done;
+      if (filter === 'done') return t.done;
+      if (filter === 'dueSoon') return getDueStatus(t) === 'dueSoon';
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      if (a.priority !== b.priority) {
+        return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+      }
+      if (sortByDue) {
+        const statusOrder: Record<DueStatus, number> = { overdue: 0, dueSoon: 1, normal: 2 };
+        if (a.dueDate === undefined && b.dueDate !== undefined) return 1;
+        if (b.dueDate === undefined && a.dueDate !== undefined) return -1;
+        if (a.dueDate === undefined) return b.createdAt - a.createdAt;
+        const statusA = getDueStatus(a); const statusB = getDueStatus(b);
+        if (statusA !== statusB) return statusOrder[statusA] - statusOrder[statusB];
+        return (a.dueDate as number) - (b.dueDate as number);
+      }
       const statusA = getDueStatus(a); const statusB = getDueStatus(b);
-      if (statusA !== statusB) return statusOrder[statusA] - statusOrder[statusB];
-      return (a.dueDate as number) - (b.dueDate as number);
-    }
-    const statusA = getDueStatus(a); const statusB = getDueStatus(b);
-    if (statusA === 'overdue' && statusB !== 'overdue') return -1;
-    if (statusB === 'overdue' && statusA !== 'overdue') return 1;
-    if (statusA === 'dueSoon' && statusB === 'normal') return -1;
-    if (statusB === 'dueSoon' && statusA === 'normal') return 1;
-    if (a.dueDate !== null && b.dueDate !== null) return a.dueDate - b.dueDate;
-    if (a.dueDate !== null) return -1;
-    if (b.dueDate !== null) return 1;
-    return b.createdAt - a.createdAt;
-  });
+      if (statusA === 'overdue' && statusB !== 'overdue') return -1;
+      if (statusB === 'overdue' && statusA !== 'overdue') return 1;
+      if (statusA === 'dueSoon' && statusB === 'normal') return -1;
+      if (statusB === 'dueSoon' && statusA === 'normal') return 1;
+      if (a.dueDate !== undefined && b.dueDate !== undefined) return a.dueDate - b.dueDate;
+      if (a.dueDate !== undefined) return -1;
+      if (b.dueDate !== undefined) return 1;
+      return b.createdAt - a.createdAt;
+    });
 
   const activeCount = todos.filter((t) => !t.done).length;
   const doneCount = todos.length - activeCount;
@@ -383,9 +545,46 @@ export default function TodoMCVPage() {
       <LangContext.Provider value={{ lang, t, toggleLang }}>
         <div className="min-h-screen" style={bgStyle}>
           <div className="max-w-2xl mx-auto px-6 pt-8 flex items-center justify-end gap-2">
-            <Link href="/" className="mr-auto inline-flex items-center gap-2 text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 text-sm font-medium transition-colors">{t.back}</Link>
-            <button onClick={toggleTheme} className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-all text-lg" title={theme === 'light' ? '深色模式' : 'Light Mode'}>{theme === 'light' ? '🌙' : '☀️'}</button>
-            <button onClick={toggleLang} className="px-3 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">{t.toggleLang}</button>
+            <Link
+              href="/"
+              className="mr-auto inline-flex items-center gap-2 text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 text-sm font-medium transition-colors"
+            >
+              {t.back}
+            </Link>
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'light' ? '切换到深色模式' : 'Switch to light mode'}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 dark:bg-slate-700/60 border border-gray-200 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-600 transition-all text-lg"
+              title={theme === 'light' ? '深色模式' : 'Light Mode'}
+            >
+              {theme === 'light' ? '🌙' : '☀️'}
+            </button>
+            <button
+              onClick={toggleLang}
+              className="px-3 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded-full hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+            >
+              {t.toggleLang}
+            </button>
+            {/* Sync status indicator */}
+            <div className="flex items-center gap-1 text-xs min-w-[80px] justify-end">
+              {syncStatus === 'syncing' && (
+                <span className="text-indigo-500 dark:text-indigo-400">🔄 同步中</span>
+              )}
+              {syncStatus === 'synced' && (
+                <span className="text-green-500 dark:text-green-400">✅ 已同步</span>
+              )}
+              {syncStatus === 'offline' && (
+                <span className="text-amber-500 dark:text-amber-400">⚠️ 离线</span>
+              )}
+              {syncStatus === 'error' && (
+                <span
+                  className="text-red-500 dark:text-red-400 cursor-help"
+                  title={syncError}
+                >
+                  ❌ 同步失败
+                </span>
+              )}
+            </div>
           </div>
           <div className="max-w-2xl mx-auto px-6 py-10">
             <div className="text-center mb-8">
@@ -442,7 +641,7 @@ export default function TodoMCVPage() {
                           {todo.recurring && todo.recurring.type !== 'none' && <RecurringBadge rule={todo.recurring} />}
                           <div className="min-w-0 flex-1">
                             <span className={`text-lg transition-all block truncate ${todo.done ? 'text-gray-400 dark:text-slate-500 line-through' : isOverdue ? 'text-red-600 dark:text-red-400' : isDueSoon ? 'text-amber-600 dark:text-amber-400' : 'text-gray-800 dark:text-slate-100'}`}>{todo.text}</span>
-                            {todo.dueDate !== null && <span className={`text-xs mt-0.5 block ${todo.done ? 'text-gray-400 dark:text-slate-500' : isOverdue ? 'text-red-500 dark:text-red-400 font-medium' : isDueSoon ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`}>{isOverdue && '⚠️ '}{isDueSoon && '📅 '}{formatDueDate(todo.dueDate, lang)}</span>}
+                            {todo.dueDate !== undefined && <span className={`text-xs mt-0.5 block ${todo.done ? 'text-gray-400 dark:text-slate-500' : isOverdue ? 'text-red-500 dark:text-red-400 font-medium' : isDueSoon ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`}>{isOverdue && '⚠️ '}{isDueSoon && '📅 '}{formatDueDate(todo.dueDate, lang)}</span>}
                           </div>
                           {todo.done && todo.recurring && todo.recurring.type !== 'none' && <span className="text-green-500 flex-shrink-0" title="Next occurrence generated">✨</span>}
                         </div>
