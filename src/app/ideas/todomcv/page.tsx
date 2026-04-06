@@ -140,6 +140,66 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+function DeleteConfirmDialog({
+  todoText,
+  onConfirm,
+  onCancel,
+}: {
+  todoText: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onCancel]);
+
+  const truncated = todoText.length > 30 ? todoText.slice(0, 30) + '...' : todoText;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-gray-200 dark:border-slate-600 w-full max-w-sm mx-4 overflow-hidden"
+      >
+        <div className="px-6 py-5">
+          <h3 className="text-lg font-semibold text-red-500 mb-2">确认删除</h3>
+          <p className="text-sm text-gray-600 dark:text-slate-300">
+            确定要删除这个任务吗？
+          </p>
+          <p className="mt-2 text-sm text-gray-800 dark:text-slate-100 font-medium bg-gray-50 dark:bg-slate-700 rounded-lg px-3 py-2 truncate">
+            {truncated}
+          </p>
+        </div>
+        <div className="flex border-t border-gray-100 dark:border-slate-700">
+          <button
+            onClick={onCancel}
+            className="flex-1 px-4 py-3 text-sm font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-3 text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type DueStatus = 'normal' | 'dueSoon' | 'overdue';
 
 function getDueStatus(todo: Todo): DueStatus {
@@ -229,6 +289,7 @@ export default function TodoMCVPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'done' | 'dueSoon'>('all');
   const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const t = translations[lang];
@@ -329,6 +390,17 @@ export default function TodoMCVPage() {
 
   const deleteTodo = (id: string) => {
     setTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const confirmDelete = (id: string, text: string) => {
+    setDeleteConfirm({ id, text });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteConfirm) {
+      deleteTodo(deleteConfirm.id);
+      setDeleteConfirm(null);
+    }
   };
 
   const clearDone = () => {
@@ -551,7 +623,7 @@ export default function TodoMCVPage() {
                         </span>
                       </label>
                       <button
-                        onClick={() => deleteTodo(todo.id)}
+                        onClick={() => confirmDelete(todo.id, todo.text)}
                         className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors text-sm"
                         title={t.delete}
                       >
@@ -610,6 +682,14 @@ export default function TodoMCVPage() {
             </button>
           )}
         </div>
+
+        {deleteConfirm && (
+          <DeleteConfirmDialog
+            todoText={deleteConfirm.text}
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => setDeleteConfirm(null)}
+          />
+        )}
       </LangContext.Provider>
     </ThemeContext.Provider>
   );
