@@ -1,11 +1,7 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import { useState } from 'react';
+import { useChat } from '@ai-sdk/react';
 
 const SUGGESTIONS = [
   '加个任务：买鸡蛋',
@@ -15,46 +11,12 @@ const SUGGESTIONS = [
 
 export default function TodoChat() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const { messages, input, setInput, handleSubmit, append, isLoading, error } = useChat({
+    api: '/api/chat',
+  });
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const send = async (text: string) => {
-    if (!text.trim() || loading) return;
-    const userMsg: Message = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
-      });
-      const data = await res.json() as { content?: string; error?: string };
-      if (data.error) {
-        setMessages(prev => [...prev, { role: 'assistant', content: `出错了：${data.error}` }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.content || '处理完成' }]);
-      }
-    } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '网络错误，请重试' }]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send(input);
-    }
+  const sendSuggestion = (text: string) => {
+    append({ role: 'user', content: text });
   };
 
   return (
@@ -97,7 +59,7 @@ export default function TodoChat() {
                   {SUGGESTIONS.map((s, i) => (
                     <button
                       key={i}
-                      onClick={() => send(s)}
+                      onClick={() => sendSuggestion(s)}
                       className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
                     >
                       {s}
@@ -117,7 +79,7 @@ export default function TodoChat() {
                 </div>
               </div>
             ))}
-            {loading && (
+            {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-2xl rounded-bl-sm">
                   <div className="flex gap-1">
@@ -128,29 +90,35 @@ export default function TodoChat() {
                 </div>
               </div>
             )}
-            <div ref={bottomRef} />
+            {error && (
+              <div className="flex justify-start">
+                <div className="bg-red-100 dark:bg-red-900 px-4 py-2 rounded-2xl rounded-bl-sm text-red-600 dark:text-red-300 text-sm">
+                  出错了，请重试
+                </div>
+              </div>
+            )}
+            <div id="todochat-bottom" />
           </div>
 
           {/* Input */}
           <div className="p-3 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="flex gap-2">
               <input
                 value={input}
                 onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
                 placeholder="说点什么..."
                 className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
-                onClick={() => send(input)}
-                disabled={!input.trim() || loading}
+                type="submit"
+                disabled={!input.trim() || isLoading}
                 className="w-9 h-9 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white flex items-center justify-center transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
               </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
