@@ -61,7 +61,7 @@ const translations = {
     back: '← 返回点子站',
     title: 'TodoMVC',
     subtitle: '派派的待办事项管理',
-    inputPlaceholder: '添加新任务... 按回车确认',
+    inputPlaceholder: '添加任务，或输入 + 唤起 AI...',
     addButton: '添加',
     filterAll: '全部',
     filterActive: '进行中',
@@ -119,7 +119,7 @@ const translations = {
     back: '← Back to Ideas',
     title: 'TodoMVC',
     subtitle: "Paipai's Todo Manager",
-    inputPlaceholder: 'Add a new task... Press Enter to confirm',
+    inputPlaceholder: 'Add a task, or + to chat with AI...',
     addButton: 'Add',
     filterAll: 'All',
     filterActive: 'Active',
@@ -888,6 +888,7 @@ export default function TodoMCVPage() {
               <p className="text-gray-500 dark:text-slate-400 mt-1">{t.subtitle}</p>
             </div>
 
+<<<<<<< Updated upstream
             {/* Tag Filter Bar */}
             {tags.length > 0 && (
               <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -916,9 +917,39 @@ export default function TodoMCVPage() {
 
             <div className="flex flex-col gap-2 mb-6">
               <div className="flex gap-2">
-                <input ref={inputRef} type="text" placeholder={t.inputPlaceholder} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addTodo()}
+                <input ref={inputRef} type="text" placeholder={t.inputPlaceholder} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const text = input.trim();
+                    if (!text) return;
+                    if (text.startsWith('+')) {
+                      const chatMessage = text.slice(1).trim();
+                      if (chatMessage) {
+                        window.dispatchEvent(new CustomEvent('todochat-quick-command', {
+                          detail: { message: chatMessage, eventId: Date.now().toString() },
+                        }));
+                      }
+                      setInput('');
+                    } else {
+                      addTodo();
+                    }
+                  }
+                }}
                   className="flex-1 px-4 py-3 text-lg border border-gray-200 dark:border-slate-600 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500" />
-                <button onClick={addTodo} className="px-6 py-3 bg-indigo-500 dark:bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors shadow-sm">{t.addButton}</button>
+                <button onClick={() => {
+                  const text = input.trim();
+                  if (!text) return;
+                  if (text.startsWith('+')) {
+                    const chatMessage = text.slice(1).trim();
+                    if (chatMessage) {
+                      window.dispatchEvent(new CustomEvent('todochat-quick-command', {
+                        detail: { message: chatMessage, eventId: Date.now().toString() },
+                      }));
+                    }
+                    setInput('');
+                  } else {
+                    addTodo();
+                  }
+                }} className="px-6 py-3 bg-indigo-500 dark:bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors shadow-sm">{t.addButton}</button>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm text-gray-500 dark:text-slate-400">{t.recurring}:</span>
@@ -929,6 +960,53 @@ export default function TodoMCVPage() {
               <button onClick={() => setSortByDue((prev) => !prev)}
                 className={`text-xs px-3 py-1 rounded-full border transition-colors ${sortByDue ? 'bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400' : 'bg-white/60 dark:bg-slate-800/60 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:border-indigo-300'}`}>
                 {sortByDue ? t.sortByDue : t.sortByCreated}
+=======
+            <div className="flex gap-2 mb-6">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={t.inputPlaceholder}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const text = input.trim();
+                    if (!text) return;
+                    if (text.startsWith('+')) {
+                      const chatMessage = text.slice(1).trim();
+                      if (chatMessage) {
+                        window.dispatchEvent(new CustomEvent('todochat-quick-command', {
+                          detail: { message: chatMessage, eventId: Date.now().toString() },
+                        }));
+                      }
+                      setInput('');
+                    } else {
+                      addTodo();
+                    }
+                  }
+                }}
+                className="flex-1 px-4 py-3 text-lg border border-gray-200 dark:border-slate-600 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500"
+              />
+              <button
+                onClick={() => {
+                  const text = input.trim();
+                  if (!text) return;
+                  if (text.startsWith('+')) {
+                    const chatMessage = text.slice(1).trim();
+                    if (chatMessage) {
+                      window.dispatchEvent(new CustomEvent('todochat-quick-command', {
+                        detail: { message: chatMessage, eventId: Date.now().toString() },
+                      }));
+                    }
+                    setInput('');
+                  } else {
+                    addTodo();
+                  }
+                }}
+                className="px-6 py-3 bg-indigo-500 dark:bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors shadow-sm"
+              >
+                {t.addButton}
+>>>>>>> Stashed changes
               </button>
             </div>
             <div className="flex items-center gap-1 mb-4 bg-white dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 p-1">

@@ -18,15 +18,46 @@ export default function TodoChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [quickCommandMessage, setQuickCommandMessage] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const processedEventId = useRef<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Listen for quick command events from TodoMVC input
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ message: string; eventId: string }>;
+      const { message, eventId } = customEvent.detail;
+
+      // Skip if already processed this event
+      if (processedEventId.current === eventId) return;
+      processedEventId.current = eventId;
+
+      // Open chat and send the message
+      setOpen(true);
+      setQuickCommandMessage(message);
+    };
+
+    window.addEventListener('todochat-quick-command', handler);
+    return () => window.removeEventListener('todochat-quick-command', handler);
+  }, []);
+
+  // Auto-submit quick command message once chat is open
+  useEffect(() => {
+    if (open && quickCommandMessage && !loading) {
+      const msg = quickCommandMessage;
+      setQuickCommandMessage(null);
+      send(msg);
+    }
+  }, [open, quickCommandMessage, loading]);
+
   const send = async (text: string) => {
     if (!text.trim() || loading) return;
     const userMsg: Message = { role: 'user', content: text };
+    const currentMessages = messages;
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
@@ -35,7 +66,7 @@ export default function TodoChat() {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({ messages: [...currentMessages, userMsg] }),
       });
       const data = await res.json() as { content?: string; error?: string };
       if (data.error) {
