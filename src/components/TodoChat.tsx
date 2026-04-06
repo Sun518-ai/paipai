@@ -8,8 +8,75 @@ interface Message {
   content: string;
 }
 
+interface Todo {
+  id: string;
+  text: string;
+  done: boolean;
+  createdAt: number;
+  pinned: boolean;
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  dueDate: number | null;
+}
+
+interface ReminderConfig {
+  enabled: boolean;
+  advanceNotice: '1h' | '1d';
+}
+
+const REMINDER_CONFIG_KEY = 'paipai-todo-reminder-config';
+const DEFAULT_CONFIG: ReminderConfig = {
+  enabled: true,
+  advanceNotice: '1h',
+};
+
+type DueStatus = 'normal' | 'dueSoon' | 'overdue';
+
 interface TodoChatProps {
   className?: string;
+}
+
+function getDueStatus(dueDate: number | null, done: boolean, advanceNotice: '1h' | '1d'): DueStatus {
+  if (done || dueDate === null) return 'normal';
+  const now = Date.now();
+  const diff = dueDate - now;
+  if (diff < 0) return 'overdue';
+  const threshold = advanceNotice === '1d' ? 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+  if (diff <= threshold) return 'dueSoon';
+  return 'normal';
+}
+
+function formatRemainingTime(dueDate: number): string {
+  const diff = dueDate - Date.now();
+  if (diff < 0) return '已过期';
+  const hours = Math.floor(diff / (60 * 60 * 1000));
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days} 天后到期`;
+  if (hours > 0) return `${hours} 小时后到期`;
+  const minutes = Math.floor(diff / (60 * 1000));
+  return `${minutes} 分钟后到期`;
+}
+
+async function requestNotificationPermission(): Promise<NotificationPermission> {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'denied';
+  }
+  if (Notification.permission === 'default') {
+    return await Notification.requestPermission();
+  }
+  return Notification.permission;
+}
+
+function sendDueNotification(todo: Todo, remainingTime: string): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  const notification = new Notification('📅 任务即将到期', {
+    body: `${todo.text}\n剩余时间: ${remainingTime}`,
+    tag: `due-${todo.id}`,
+  });
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+  };
 }
 
 export default function TodoChat({ className = '' }: TodoChatProps) {
@@ -17,9 +84,78 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [streamedContent, setStreamedContent] = useState('');
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [reminderConfig, setReminderConfig] = useState<ReminderConfig>(DEFAULT_CONFIG);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const notifiedTasksRef = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load todos and config from localStorage
+  useEffect(() => {
+    try {
+      const savedTodos = localStorage.getItem('paipai-todos');
+      if (savedTodos) {
+        setTodos(JSON.parse(savedTodos));
+      }
+      const savedConfig = localStorage.getItem(REMINDER_CONFIG_KEY);
+      if (savedConfig) {
+        setReminderConfig(JSON.parse(savedConfig));
+      }
+      if ('Notification' in window) {
+        setNotificationPermission(Notification.permission);
+      }
+    } catch {}
+  }, []);
+
+  // Save todos to localStorage when changed
+  useEffect(() => {
+    try {
+      localStorage.setItem('paipai-todos', JSON.stringify(todos));
+    } catch {}
+  }, [todos]);
+
+  // Save config to localStorage when changed
+  useEffect(() => {
+    try {
+      localStorage.setItem(REMINDER_CONFIG_KEY, JSON.stringify(reminderConfig));
+    } catch {}
+  }, [reminderConfig]);
+
+  // Request notification permission
+  useEffect(() => {
+    if (reminderConfig.enabled && notificationPermission === 'default') {
+      requestNotificationPermission().then(setNotificationPermission);
+    }
+  }, [reminderConfig.enabled, notificationPermission]);
+
+  // Check for due tasks and send notifications
+  useEffect(() => {
+    if (!reminderConfig.enabled) return;
+    if (notificationPermission !== 'granted') return;
+
+    const checkDueTasks = () => {
+      const now = Date.now();
+      todos.forEach((todo) => {
+        if (todo.done || !todo.dueDate) return;
+        const status = getDueStatus(todo.dueDate, todo.done, reminderConfig.advanceNotice);
+        const notifyKey = `${todo.id}-${reminderConfig.advanceNotice}`;
+        
+        if ((status === 'overdue' || status === 'dueSoon') && !notifiedTasksRef.current.has(notifyKey)) {
+          sendDueNotification(todo, formatRemainingTime(todo.dueDate));
+          notifiedTasksRef.current.add(notifyKey);
+        }
+      });
+    };
+
+    // Check immediately on mount
+    checkDueTasks();
+    
+    // Then check every minute
+    const interval = setInterval(checkDueTasks, 60 * 1000);
+    return () => clearInterval(interval);
+  }, [todos, reminderConfig, notificationPermission]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -33,6 +169,10 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [input]);
+
+  // Get overdue and due soon tasks for status display
+  const overdueTasks = todos.filter((t) => !t.done && getDueStatus(t.dueDate, t.done, reminderConfig.advanceNotice) === 'overdue');
+  const dueSoonTasks = todos.filter((t) => !t.done && getDueStatus(t.dueDate, t.done, reminderConfig.advanceNotice) === 'dueSoon');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +273,17 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
     }
   };
 
+  const toggleReminderEnabled = () => {
+    setReminderConfig((prev) => ({ ...prev, enabled: !prev.enabled }));
+  };
+
+  const toggleAdvanceNotice = () => {
+    setReminderConfig((prev) => ({
+      ...prev,
+      advanceNotice: prev.advanceNotice === '1h' ? '1d' : '1h',
+    }));
+  };
+
   return (
     <div className={`flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden ${className}`}>
       {/* Header */}
@@ -143,12 +294,53 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
         </h3>
       </div>
 
+      {/* Due Status Banner */}
+      {(overdueTasks.length > 0 || dueSoonTasks.length > 0) && (
+        <div className="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800/30">
+          <div className="flex items-center gap-2 text-sm">
+            {overdueTasks.length > 0 && (
+              <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                <span className="font-medium">🔴 {overdueTasks.length} 项已过期</span>
+              </span>
+            )}
+            {dueSoonTasks.length > 0 && (
+              <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                <span className="font-medium">🟠 {dueSoonTasks.length} 项即将到期</span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto max-h-80 min-h-48 p-4 space-y-4">
         {messages.length === 0 && !streamedContent ? (
           <div className="text-center text-gray-400 dark:text-slate-500 py-8">
             <p className="text-3xl mb-2">💬</p>
             <p className="text-sm">发送消息开始对话</p>
+            {(overdueTasks.length > 0 || dueSoonTasks.length > 0) && (
+              <div className="mt-4 text-left">
+                <p className="text-xs text-gray-500 dark:text-slate-400 mb-2">📋 任务概览：</p>
+                {overdueTasks.slice(0, 3).map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400 mb-1">
+                    🔴 {t.text.length > 20 ? t.text.slice(0, 20) + '...' : t.text}
+                  </div>
+                ))}
+                {dueSoonTasks.slice(0, 3).map((t) => (
+                  <div key={t.id} className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 mb-1">
+                    🟠 {t.text.length > 20 ? t.text.slice(0, 20) + '...' : t.text}
+                  </div>
+                ))}
+                {reminderConfig.enabled && notificationPermission !== 'granted' && (
+                  <button
+                    onClick={() => requestNotificationPermission().then(setNotificationPermission)}
+                    className="mt-2 text-xs text-indigo-500 hover:text-indigo-600 underline"
+                  >
+                    点击开启通知提醒
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -194,6 +386,33 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Settings Footer */}
+      <div className="px-3 py-2 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleReminderEnabled}
+            className={`px-2 py-1 rounded ${
+              reminderConfig.enabled
+                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400'
+            }`}
+          >
+            🔔 {reminderConfig.enabled ? '提醒开' : '提醒关'}
+          </button>
+          {reminderConfig.enabled && (
+            <button
+              onClick={toggleAdvanceNotice}
+              className="px-2 py-1 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300"
+            >
+              ⏰ {reminderConfig.advanceNotice === '1h' ? '1小时' : '1天'}
+            </button>
+          )}
+        </div>
+        {notificationPermission === 'denied' && reminderConfig.enabled && (
+          <span className="text-red-500">通知已被禁用</span>
+        )}
+      </div>
+
       {/* Input */}
       <div className="p-3 border-t border-gray-100 dark:border-slate-700">
         <form onSubmit={handleSubmit} className="flex items-end gap-2">
@@ -236,4 +455,18 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
       </div>
     </div>
   );
+}
+
+// Local storage utilities for apps not using Feishu Bitable
+
+export async function loadHybrid<T>(localKey: string, defaultValue: T): Promise<T> {
+  try {
+    const saved = localStorage.getItem(localKey);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return defaultValue;
+}
+
+export function saveHybrid(localKey: string, data: unknown): void {
+  try { localStorage.setItem(localKey, JSON.stringify(data)); } catch {}
 }
