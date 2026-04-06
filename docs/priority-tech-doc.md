@@ -9,22 +9,21 @@
 **文件**: `src/app/ideas/todomcv/page.tsx`
 
 ```typescript
-// 新增 priority 字段到 Todo interface
+type Priority = 'P0' | 'P1' | 'P2' | 'P3';
+
 interface Todo {
   id: string;
   text: string;
   done: boolean;
   createdAt: number;
   pinned: boolean;
-  priority: 'P0' | 'P1' | 'P2' | 'P3'; // 新增，默认 'P3'
+  priority: Priority; // 新增，默认 'P3'
 }
 ```
 
 ## 3. 优先级配置
 
 ```typescript
-type Priority = 'P0' | 'P1' | 'P2' | 'P3';
-
 const PRIORITY_CONFIG: Record<Priority, { label: string; labelEn: string; color: string; emoji: string }> = {
   P0: { label: '紧急', labelEn: 'Urgent',   color: '#EF4444', emoji: '🔴' },
   P1: { label: '高',   labelEn: 'High',     color: '#F97316', emoji: '🟠' },
@@ -75,12 +74,18 @@ const translations = {
 });
 ```
 
-## 6. 新增函数
+## 6. 新增组件
+
+### PrioritySelector
+
+绝对定位的下拉菜单，点击外部自动关闭（document mousedown listener），4 个优先级选项，带颜色图标和本地化名称。
+
+## 7. 新增函数
 
 - `setPriority(id, priority)` - 设置任务优先级
 - `PrioritySelector` - 优先级选择下拉组件（点击优先级图标展开）
 
-## 7. 组件变更
+## 8. 组件变更
 
 ### TodoItem 行内新增
 
@@ -104,20 +109,20 @@ const translations = {
 - 4 个选项，点击后调用 `setPriority`
 - 点击外部关闭（onBlur 或 document click listener）
 
-## 8. 新增状态
+## 9. 新增状态
 
 ```typescript
 const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
 ```
 
-## 9. 默认值变更
+## 10. 默认值变更
 
 ```typescript
 // addTodo 中新增任务默认 priority 为 'P3'
 { id: genId(), text, done: false, pinned: false, createdAt: Date.now(), priority: 'P3' }
 ```
 
-## 10. 构建要求
+## 11. 构建要求
 
 - 所有新增代码使用 TypeScript 严格模式
 - 不引入新的 npm 依赖
