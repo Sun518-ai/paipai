@@ -4,6 +4,14 @@ import { useChat, Chat } from '@ai-sdk/react';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DefaultChatTransport } from 'ai';
+import {
+  parseContent,
+  type ContentSegment,
+  TaskCard,
+  SummaryCard,
+  LinkCard,
+  DataCard,
+} from '@/components/cards';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +76,38 @@ function TypingIndicator({ locale }: { locale: Locale }) {
   );
 }
 
+function MessageContent({ content, isUser }: { content: string; isUser: boolean }) {
+  const segments = parseContent(content);
+  
+  // For user messages, just render as plain text
+  if (isUser) {
+    return <p className="whitespace-pre-wrap">{content}</p>;
+  }
+  
+  // For AI messages, render with cards
+  return (
+    <div className="space-y-1">
+      {segments.map((segment, index) => {
+        switch (segment.type) {
+          case 'task':
+            return <TaskCard key={index} tasks={segment.tasks} />;
+          case 'summary':
+            return <SummaryCard key={index} content={segment.content} />;
+          case 'link':
+            return <LinkCard key={index} url={segment.url} title={segment.title} />;
+          case 'data':
+            return <DataCard key={index} metrics={segment.metrics} />;
+          case 'text':
+          default:
+            return segment.content.trim() ? (
+              <p key={index} className="whitespace-pre-wrap">{segment.content}</p>
+            ) : null;
+        }
+      })}
+    </div>
+  );
+}
+
 function MessageBubble({
   message,
 }: {
@@ -97,7 +137,8 @@ function MessageBubble({
             : 'bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-slate-100 rounded-tl-sm'
         }`}
       >
-        {text}
+        {isUser && <p className="whitespace-pre-wrap">{text}</p>}
+        {!isUser && <MessageContent content={text} isUser={isUser} />}
       </div>
     </div>
   );
