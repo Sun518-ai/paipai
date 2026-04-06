@@ -4,6 +4,16 @@ import { loadHybrid, saveHybrid } from './localStore';
 
 export type SyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 
+export type RecurringType = 'none' | 'daily' | 'weekly' | 'monthly';
+
+export interface RecurringRule {
+  type: RecurringType;
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  lastGeneratedAt: number;
+  seriesCreatedAt: number;
+}
+
 export interface Todo {
   id: string;
   localId: string;
@@ -14,7 +24,9 @@ export interface Todo {
   updatedAt: number;
   pinned: boolean;
   priority: 'P0' | 'P1' | 'P2' | 'P3';
+  tagIds: string[];
   dueDate?: number;
+  recurring?: RecurringRule;
 }
 
 export async function fetchFromCloud(): Promise<{ todos: Todo[]; lastSync: number | null }> {
