@@ -1,8 +1,19 @@
-"'use client'";
+'use client';
 
 import Link from 'next/link';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
+import dynamic from 'next/dynamic';
+
+// Dynamic import TodoChat to avoid SSR issues with AI SDK
+const TodoChat = dynamic(() => import('@/components/TodoChat'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-48">
+      <span className="text-gray-400 dark:text-slate-500">加载中...</span>
+    </div>
+  ),
+});
 
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -178,6 +189,7 @@ export default function TodoMCVPage() {
   const [input, setInput] = useState('');
   const [filter, setFilter] = useState<'all' | 'active' | 'done'>('all');
   const [priorityMenuOpen, setPriorityMenuOpen] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const t = translations[lang];
@@ -479,7 +491,37 @@ export default function TodoMCVPage() {
                 )}
               </div>
             )}
+
+            {/* TodoChat Section */}
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-800 dark:text-slate-200 flex items-center gap-2">
+                  <span>💬</span>
+                  AI 助手
+                </h2>
+                <button
+                  onClick={() => setShowChat(!showChat)}
+                  className="text-sm text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                >
+                  {showChat ? '收起' : '展开'}
+                </button>
+              </div>
+              {showChat && (
+                <TodoChat className="h-96" />
+              )}
+            </div>
           </div>
+
+          {/* Floating Action Button for Chat */}
+          {!showChat && (
+            <button
+              onClick={() => setShowChat(true)}
+              className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-500 dark:bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-all flex items-center justify-center text-2xl z-50"
+              title="打开 AI 助手"
+            >
+              💬
+            </button>
+          )}
         </div>
       </LangContext.Provider>
     </ThemeContext.Provider>
