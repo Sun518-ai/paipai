@@ -7,7 +7,6 @@
 ## 2. 数据模型变更
 
 **文件**: `src/app/ideas/todomcv/page.tsx`
-
 ```typescript
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 

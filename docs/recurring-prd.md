@@ -34,20 +34,18 @@ interface Todo {
   done: boolean;
   createdAt: number;
   pinned: boolean;
+  dueDate: number | null;  // existing field
   // 新增字段
   recurring?: RecurringRule;
+  completedAt?: number;
 }
 
 interface RecurringRule {
-  type: 'daily' | 'weekly' | 'monthly';
-  // weekly: 0-6 (周日到周六)
-  dayOfWeek?: number;
-  // monthly: 1-31
-  dayOfMonth?: number;
-  // 上次生成该任务的时间（用于判断是否该生成新任务）
-  lastGeneratedAt: number;
-  // 原始创建时间（用于确定每月/每周的哪一天）
-  seriesCreatedAt: number;
+  type: 'none' | 'daily' | 'weekly' | 'monthly';
+  dayOfWeek?: number;   // 0=周日, 1=周一, ..., 6=周六 (weekly)
+  dayOfMonth?: number;  // 1-31 (monthly)
+  lastGeneratedAt: number; // timestamp of last generation
+  seriesCreatedAt: number; // original creation time
 }
 ```
 
@@ -58,6 +56,7 @@ interface RecurringRule {
 ### 3.4 重复任务标记
 - 重复任务在列表中显示 🔁 图标
 - 悬停显示具体重复规则（如"每天"、"每周一"、"每月15号"）
+- 完成的重复任务显示 ✨ 图标（表示新周期已生成）
 
 ### 3.5 编辑重复规则
 - 点击任务进入编辑模式
@@ -99,14 +98,14 @@ interface RecurringRule {
 ## 6. 非功能需求
 
 - **性能**: localStorage 读写不影响 UI 响应
-- **兼容性**: 支持简体中文界面
+- **兼容性**: 支持简体中文和英文界面
 - **可访问性**: 键盘可操作，屏幕阅读器友好
 
 ---
 
 ## 7. 成功标准
 
-- [ ] 用户可以创建每日/每周/每月的重复任务
-- [ ] 完成重复任务后，系统自动生成下一个周期的任务
-- [ ] 重复规则在 UI 中清晰可见
-- [ ] `npm run build` 通过
+- [x] 用户可以创建每日/每周/每月的重复任务
+- [x] 完成重复任务后，系统自动生成下一个周期的任务
+- [x] 重复规则在 UI 中清晰可见
+- [x] npm run build 通过
