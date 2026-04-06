@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport } from 'ai';
+import type { UIMessage, TextUIPart } from 'ai';
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
+interface QuickCommandEvent {
+  message: string;
+  eventId: string;
 }
 
 const SUGGESTIONS = [
@@ -13,15 +16,30 @@ const SUGGESTIONS = [
   '完成了第1个',
 ];
 
+// Helper function to extract text from message parts
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .filter((part): part is TextUIPart => part.type === 'text')
+    .map(part => part.text)
+    .join('');
+}
+
 export default function TodoChat() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
   const [quickCommandMessage, setQuickCommandMessage] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const processedEventId = useRef<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
+  // Use AI SDK's useChat hook for streaming
+  const { messages, sendMessage, stop, status, error } = useChat({
+    transport: new DefaultChatTransport({ api: '/api/chat' }),
+  });
+
+  const isLoading = status === 'submitted' || status === 'streaming';
+
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -29,7 +47,7 @@ export default function TodoChat() {
   // Listen for quick command events from TodoMVC input
   useEffect(() => {
     const handler = (e: Event) => {
-      const customEvent = e as CustomEvent<{ message: string; eventId: string }>;
+      const customEvent = e as CustomEvent<QuickCommandEvent>;
       const { message, eventId } = customEvent.detail;
 
       // Skip if already processed this event
@@ -47,45 +65,29 @@ export default function TodoChat() {
 
   // Auto-submit quick command message once chat is open
   useEffect(() => {
-    if (open && quickCommandMessage && !loading) {
+    if (open && quickCommandMessage && !isLoading) {
       const msg = quickCommandMessage;
       setQuickCommandMessage(null);
-      send(msg);
+      sendMessage({ text: msg });
     }
-  }, [open, quickCommandMessage, loading]);
+  }, [open, quickCommandMessage, isLoading, sendMessage]);
 
-  const send = async (text: string) => {
-    if (!text.trim() || loading) return;
-    const userMsg: Message = { role: 'user', content: text };
-    const currentMessages = messages;
-    setMessages(prev => [...prev, userMsg]);
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    sendMessage({ text: input });
     setInput('');
-    setLoading(true);
+  };
 
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...currentMessages, userMsg] }),
-      });
-      const data = await res.json() as { content?: string; error?: string };
-      if (data.error) {
-        setMessages(prev => [...prev, { role: 'assistant', content: `出错了：${data.error}` }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.content || '处理完成' }]);
-      }
-    } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '网络错误，请重试' }]);
-    } finally {
-      setLoading(false);
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      formRef.current?.requestSubmit();
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send(input);
-    }
+  const handleSuggestionClick = (suggestion: string) => {
+    sendMessage({ text: suggestion });
   };
 
   return (
@@ -112,12 +114,33 @@ export default function TodoChat() {
       {open && (
         <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ maxHeight: '70vh' }}>
           {/* Header */}
-          <div className="px-4 py-3 bg-indigo-500 text-white flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-            <span className="font-medium">📋 Todo 助手</span>
+          <div className="px-4 py-3 bg-indigo-500 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <span className="font-medium">📋 Todo 助手</span>
+            </div>
+            {/* Stop button when loading */}
+            {isLoading && (
+              <button
+                onClick={stop}
+                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                aria-label="停止生成"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="2" />
+                </svg>
+              </button>
+            )}
           </div>
+
+          {/* Error display */}
+          {error && (
+            <div className="px-4 py-2 bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-200 text-sm">
+              发生错误: {error.message}
+            </div>
+          )}
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -128,7 +151,7 @@ export default function TodoChat() {
                   {SUGGESTIONS.map((s, i) => (
                     <button
                       key={i}
-                      onClick={() => send(s)}
+                      onClick={() => handleSuggestionClick(s)}
                       className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
                     >
                       {s}
@@ -137,18 +160,19 @@ export default function TodoChat() {
                 </div>
               </div>
             )}
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
                   m.role === 'user'
                     ? 'bg-indigo-500 text-white rounded-br-sm'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
                 }`}>
-                  <pre className="whitespace-pre-wrap text-xs" style={{ fontFamily: 'inherit' }}>{m.content}</pre>
+                  <pre className="whitespace-pre-wrap text-xs" style={{ fontFamily: 'inherit' }}>{getMessageText(m)}</pre>
                 </div>
               </div>
             ))}
-            {loading && (
+            {/* Loading indicator - show when waiting for response */}
+            {status === 'submitted' && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-2xl rounded-bl-sm">
                   <div className="flex gap-1">
@@ -163,18 +187,18 @@ export default function TodoChat() {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+          <form ref={formRef} onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-gray-700">
             <div className="flex gap-2">
               <input
                 value={input}
-                onChange={e => setInput(e.target.value)}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="说点什么..."
                 className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
-                onClick={() => send(input)}
-                disabled={!input.trim() || loading}
+                type="submit"
+                disabled={!input.trim() || isLoading}
                 className="w-9 h-9 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white flex items-center justify-center transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -182,7 +206,7 @@ export default function TodoChat() {
                 </svg>
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </>

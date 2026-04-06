@@ -1,15 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getModel, MINIMAX_MODEL } from '@/lib/aiProvider';
-import { TOOLS, ToolName } from '@/lib/todoTools';
+import { NextRequest } from 'next/server';
+import { streamText, tool } from 'ai';
+import { zodSchema } from '@ai-sdk/provider-utils';
+import { getModel } from '@/lib/aiProvider';
+import { z } from 'zod';
+
+// ─── Bitable Helpers ───────────────────────────────────────────────────────────
 
 const APP_ID = process.env.FEISHU_APP_ID || 'cli_a934b5afcc5d5cd3';
 const APP_SECRET = process.env.FEISHU_APP_SECRET || '3SoEuoKZbtNweBtt5O0aVdqYeilzLnqw';
 const BITABLE_APP_TOKEN = 'RbB2bGUENaqvoUsJ0MQcJoQinIh';
 const BITABLE_TABLE_ID = 'tblBIQSAzYz9uG0x';
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
-const MINIMAX_BASE_URL = process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com';
-
-// ─── Bitable Helpers ───────────────────────────────────────────────────────────
 
 let tokenCache = '';
 let tokenExpire = 0;
@@ -118,126 +118,98 @@ async function deleteTodo(text: string): Promise<boolean> {
   return true;
 }
 
-// ─── Tool Executor ────────────────────────────────────────────────────────────
+// ─── Tool Definitions (Vercel AI SDK v6 format) ─────────────────────────────────
 
-async function executeTool(name: ToolName, args: Record<string, unknown>): Promise<string> {
-  switch (name) {
-    case 'create_todo': {
-      const { text, priority = 'P3', dueDate, tags = [] } = args;
-      await createTodo(text as string, priority as string, dueDate as string | undefined, tags as string[]);
-      return `✅ 已创建任务「${text}」${priority !== 'P3' ? `(优先级 ${priority})` : ''}${dueDate ? `，截止日期 ${dueDate}` : ''}`;
-    }
-    case 'list_todos': {
-      const { filter = 'all', tag, priority } = args as { filter?: string; tag?: string; priority?: string };
-      const todos = await fetchTodos();
-      let list = todos;
-      if (filter === 'active') list = list.filter(t => !t.done);
-      else if (filter === 'done') list = list.filter(t => t.done);
-      if (tag) list = list.filter(t => t.tagIds?.includes(tag));
-      if (priority) list = list.filter(t => t.priority === priority);
-      if (list.length === 0) return '暂无任务';
-      const lines = list.map((t, i) => {
-        const status = t.done ? '✅' : '⬜';
-        const pri = t.priority !== 'P3' ? ` [${t.priority}]` : '';
-        const due = t.dueDate ? ` 📅${new Date(t.dueDate).toLocaleDateString('zh-CN')}` : '';
-        return `${status} ${i + 1}. ${t.text}${pri}${due}`;
-      });
-      return `📋 共 ${list.length} 个任务：\n${lines.join('\n')}`;
-    }
-    case 'complete_todo': {
-      const { text } = args;
-      const ok = await completeTodo(text as string);
-      return ok ? `✅ 「${text}」已完成！` : `找不到未完成的任务「${text}」`;
-    }
-    case 'delete_todo': {
-      const { text } = args;
-      const ok = await deleteTodo(text as string);
-      return ok ? `🗑️ 「${text}」已删除` : `找不到任务「${text}」`;
-    }
-    default:
-      return `未知工具: ${name}`;
-  }
-}
+const createTodoTool = tool({
+  description: 'Create a new todo item. Use when user wants to add a task.',
+  inputSchema: zodSchema(z.object({
+    text: z.string().describe('Todo title/task description, e.g. "买鸡蛋", "完成项目报告"'),
+    priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional().describe('Priority level. P0=紧急重要, P1=重要, P2=普通, P3=低'),
+    dueDate: z.string().optional().describe('Due date in YYYY-MM-DD format, e.g. "2026-04-10"'),
+    tags: z.array(z.string()).optional().describe('Tags for the task, e.g. ["工作", "紧急"]'),
+  })),
+  execute: async ({ text, priority = 'P3', dueDate, tags = [] }) => {
+    await createTodo(text, priority, dueDate, tags);
+    return `✅ 已创建任务「${text}」${priority !== 'P3' ? `(优先级 ${priority})` : ''}${dueDate ? `，截止日期 ${dueDate}` : ''}`;
+  },
+});
 
-// ─── MiniMax API (via unified provider) ───────────────────────────────────────
+const listTodosTool = tool({
+  description: 'List all todo items. Use when user wants to see their tasks.',
+  inputSchema: zodSchema(z.object({
+    filter: z.enum(['all', 'active', 'done']).optional().describe('Filter by status: all (default), active (undone), done'),
+    tag: z.string().optional().describe('Filter by tag name, e.g. "工作"'),
+    priority: z.enum(['P0', 'P1', 'P2', 'P3']).optional().describe('Filter by priority'),
+  })),
+  execute: async ({ filter = 'all', tag, priority }) => {
+    const todos = await fetchTodos();
+    let list = todos;
+    if (filter === 'active') list = list.filter(t => !t.done);
+    else if (filter === 'done') list = list.filter(t => t.done);
+    if (tag) list = list.filter(t => t.tagIds?.includes(tag));
+    if (priority) list = list.filter(t => t.priority === priority);
+    if (list.length === 0) return '暂无任务';
+    const lines = list.map((t, i) => {
+      const status = t.done ? '✅' : '⬜';
+      const pri = t.priority !== 'P3' ? ` [${t.priority}]` : '';
+      const due = t.dueDate ? ` 📅${new Date(t.dueDate).toLocaleDateString('zh-CN')}` : '';
+      return `${status} ${i + 1}. ${t.text}${pri}${due}`;
+    });
+    return `📋 共 ${list.length} 个任务：\n${lines.join('\n')}`;
+  },
+});
 
-/**
- * Call MiniMax chat API using the unified provider's model configuration.
- * The getModel() validates that MINIMAX_API_KEY is set.
- */
-async function chatWithMiniMax(messages: Array<{ role: string; content: string }>, tools: unknown[]) {
-  // getModel() will throw if MINIMAX_API_KEY is not set (serves as validation)
-  getModel();
+const completeTodoTool = tool({
+  description: 'Mark a todo as completed. Use when user says "完成了", "done", "搞定" etc.',
+  inputSchema: zodSchema(z.object({
+    text: z.string().describe('The todo text to mark as done. Can be partial match.'),
+  })),
+  execute: async ({ text }) => {
+    const ok = await completeTodo(text);
+    return ok ? `✅ 「${text}」已完成！` : `找不到未完成的任务「${text}」`;
+  },
+});
 
-  const response = await fetch(`${MINIMAX_BASE_URL}/v1/text/chatcompletion_v2`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${MINIMAX_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: MINIMAX_MODEL,
-      messages,
-      tools,
-      tool_choice: 'auto',
-      stream: false,
-    }),
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`MiniMax API error: ${response.status} - ${text}`);
-  }
-  return response.json();
-}
+const deleteTodoTool = tool({
+  description: 'Delete a todo item permanently.',
+  inputSchema: zodSchema(z.object({
+    text: z.string().describe('The todo text to delete. Can be partial match.'),
+  })),
+  execute: async ({ text }) => {
+    const ok = await deleteTodo(text);
+    return ok ? `🗑️ 「${text}」已删除` : `找不到任务「${text}」`;
+  },
+});
 
 // ─── Route ───────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages } = await req.json() as { messages: Array<{ role: string; content: string }> };
-
-    if (!MINIMAX_API_KEY) {
-      return NextResponse.json({ error: 'MINIMAX_API_KEY not configured' }, { status: 500 });
+    // Validate API key is configured
+    try {
+      getModel();
+    } catch {
+      return new Response('MINIMAX_API_KEY is not configured', { status: 500 });
     }
 
-    // First call - let MiniMax decide if it needs tools
-    const aiResponse = await chatWithMiniMax(messages, TOOLS);
+    const { messages } = await req.json();
 
-    const toolCalls = aiResponse.choices?.[0]?.message?.tool_calls;
+    const result = await streamText({
+      model: getModel(),
+      system: '你是一个友好的待办事项助手，帮助用户管理任务。用中文回复。',
+      messages,
+      tools: {
+        createTodo: createTodoTool,
+        listTodos: listTodosTool,
+        completeTodo: completeTodoTool,
+        deleteTodo: deleteTodoTool,
+      },
+    });
 
-    if (toolCalls && toolCalls.length > 0) {
-      // Execute tool calls
-      const toolResults: Array<{ tool_call_id: string; name: string; content: string }> = [];
-      for (const call of toolCalls) {
-        const name = call.function?.name as ToolName;
-        const args = JSON.parse(call.function?.arguments || '{}');
-        const result = await executeTool(name, args);
-        toolResults.push({ tool_call_id: call.id || '', name, content: result });
-      }
-
-      // Second call - return tool results to MiniMax
-      const messagesWithResults = [
-        ...messages,
-        aiResponse.choices?.[0]?.message,
-        {
-          role: 'tool',
-          tool_call_id: toolResults[0]?.tool_call_id,
-          content: toolResults.map(r => `[${r.name}] ${r.content}`).join('\n')
-        }
-      ];
-
-      const finalResponse = await chatWithMiniMax(messagesWithResults, TOOLS);
-      const content = finalResponse.choices?.[0]?.message?.content || '处理完成';
-
-      return NextResponse.json({ content, toolResults });
-    }
-
-    // No tool call - return direct response
-    const content = aiResponse.choices?.[0]?.message?.content || '我没有理解，请再说一次';
-    return NextResponse.json({ content });
+    return result.toUIMessageStreamResponse();
 
   } catch (error) {
     console.error('[chat route]', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return new Response(String(error), { status: 500 });
   }
 }
