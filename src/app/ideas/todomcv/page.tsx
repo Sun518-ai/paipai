@@ -681,8 +681,6 @@ export default function TodoMCVPage() {
             onCancel={() => setDeleteConfirm(null)}
           />
         )}
-
-        <TodoChat />
       </LangContext.Provider>
     </ThemeContext.Provider>
   );
