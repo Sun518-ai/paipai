@@ -7,13 +7,17 @@ interface Message {
   content: string;
 }
 
+interface TodoChatProps {
+  className?: string;
+}
+
 const SUGGESTIONS = [
   '加个任务：买鸡蛋',
   '看看我的任务',
   '完成了第1个',
 ];
 
-export default function TodoChat() {
+export default function TodoChat({ className = '' }: TodoChatProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
