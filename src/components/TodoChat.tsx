@@ -62,7 +62,7 @@ export default function TodoChat() {
       {/* Floating button */}
       <button
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg flex items-center justify-center transition-all hover:scale-105"
+        className="fixed bottom-6 right-0 mr-6 z-50 w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg flex items-center justify-center transition-all hover:scale-105"
         style={{ boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)' }}
         aria-label="打开 Todo 助手"
       >
@@ -79,7 +79,7 @@ export default function TodoChat() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ maxHeight: '70vh' }}>
+        <div className="fixed bottom-24 right-0 mr-6 z-50 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ maxHeight: '70vh' }}>
           {/* Header */}
           <div className="px-4 py-3 bg-indigo-500 text-white flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
