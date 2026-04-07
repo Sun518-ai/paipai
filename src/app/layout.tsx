@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import TodoChat from '@/components/TodoChat';
 
 export const metadata: Metadata = {
   title: '💡 派派的点子站',
@@ -16,7 +15,6 @@ export default function RootLayout({
     <html lang="zh-CN">
       <body className="antialiased">
         {children}
-        <TodoChat />
       </body>
     </html>
   );
