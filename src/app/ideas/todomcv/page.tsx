@@ -3,17 +3,8 @@
 import Link from 'next/link';
 import { useState, useEffect, useRef, createContext, useContext } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
-import dynamic from 'next/dynamic';
-
-// Dynamic import TodoChat to avoid SSR issues with AI SDK
-const TodoChat = dynamic(() => import('@/components/TodoChat'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-48">
-      <span className="text-gray-400 dark:text-slate-500">加载中...</span>
-    </div>
-  ),
-});
+import { pushToCloud, mergeTodos, type SyncStatus, type Todo as SyncTodo } from '@/lib/todoSync';
+import TodoChat from '@/components/TodoChat';
 
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 
@@ -690,6 +681,8 @@ export default function TodoMCVPage() {
             onCancel={() => setDeleteConfirm(null)}
           />
         )}
+
+        <TodoChat />
       </LangContext.Provider>
     </ThemeContext.Provider>
   );
