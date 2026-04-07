@@ -1,239 +1,159 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface Message {
-  id: string;
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface TodoChatProps {
-  className?: string;
-}
+const SUGGESTIONS = [
+  '加个任务：买鸡蛋',
+  '看看我的任务',
+  '完成了第1个',
+];
 
-export default function TodoChat({ className = '' }: TodoChatProps) {
+export default function TodoChat() {
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [streamedContent, setStreamedContent] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamedContent]);
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
-    }
-  }, [input]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      role: 'user',
-      content: input.trim(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
+  const send = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const userMsg: Message = { role: 'user', content: text };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
-    setIsLoading(true);
-    setStreamedContent('');
-
-    // Create abort controller for cancellation
-    abortControllerRef.current = new AbortController();
+    setLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        }),
-        signal: abortControllerRef.current.signal,
+        body: JSON.stringify({ messages: [...messages, userMsg] }),
       });
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('No response body');
-      }
-
-      const decoder = new TextDecoder();
-      let fullContent = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        fullContent += chunk;
-        setStreamedContent(fullContent);
-      }
-
-      // Add the complete assistant message
-      const assistantMessage: Message = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        role: 'assistant',
-        content: fullContent,
-      };
-      setMessages((prev) => [...prev, assistantMessage]);
-      setStreamedContent('');
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        // User cancelled - keep any partial content
-        if (streamedContent) {
-          const assistantMessage: Message = {
-            id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-            role: 'assistant',
-            content: streamedContent + '\n\n[生成已中断]',
-          };
-          setMessages((prev) => [...prev, assistantMessage]);
-          setStreamedContent('');
-        }
+      const data = await res.json() as { content?: string; error?: string };
+      if (data.error) {
+        setMessages(prev => [...prev, { role: 'assistant', content: `出错了：${data.error}` }]);
       } else {
-        const errorMessage: Message = {
-          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-          role: 'assistant',
-          content: `⚠️ 发生错误: ${error.message || '未知错误'}`,
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages(prev => [...prev, { role: 'assistant', content: data.content || '处理完成' }]);
       }
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: '网络错误，请重试' }]);
     } finally {
-      setIsLoading(false);
-      abortControllerRef.current = null;
+      setLoading(false);
     }
   };
 
-  const handleStop = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      send(input);
     }
   };
 
   return (
-    <div className={`flex flex-col bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm overflow-hidden ${className}`}>
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-700 bg-gradient-to-r from-indigo-500 to-purple-500">
-        <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-          <span className="text-lg">🤖</span>
-          AI 助手
-        </h3>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto max-h-80 min-h-48 p-4 space-y-4">
-        {messages.length === 0 && !streamedContent ? (
-          <div className="text-center text-gray-400 dark:text-slate-500 py-8">
-            <p className="text-3xl mb-2">💬</p>
-            <p className="text-sm">发送消息开始对话</p>
-          </div>
+    <>
+      {/* Floating button */}
+      <button
+        onClick={() => setOpen(!open)}
+        className="fixed bottom-6 right-0 mr-6 z-50 w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg flex items-center justify-center transition-all hover:scale-105"
+        style={{ boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)' }}
+        aria-label="打开 Todo 助手"
+      >
+        {open ? (
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         ) : (
-          <>
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
-                    message.role === 'user'
-                      ? 'bg-indigo-500 text-white rounded-br-md'
-                      : 'bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-slate-200 rounded-bl-md'
-                  }`}
-                >
-                  {message.role === 'assistant' && (
-                    <span className="text-xs text-indigo-500 dark:text-indigo-400 font-medium mb-1 block">
-                      AI 助手
-                    </span>
-                  )}
-                  <div className="whitespace-pre-wrap break-words">
-                    {message.content}
-                  </div>
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        )}
+      </button>
+
+      {/* Chat panel */}
+      {open && (
+        <div className="fixed bottom-24 right-0 mr-6 z-50 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700" style={{ maxHeight: '70vh' }}>
+          {/* Header */}
+          <div className="px-4 py-3 bg-indigo-500 text-white flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            <span className="font-medium">📋 Todo 助手</span>
+          </div>
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.length === 0 && (
+              <div className="text-center text-gray-400 text-sm py-4">
+                <p className="mb-3">👋 你好！告诉我你想做什么：</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {SUGGESTIONS.map((s, i) => (
+                    <button
+                      key={i}
+                      onClick={() => send(s)}
+                      className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
+                  m.role === 'user'
+                    ? 'bg-indigo-500 text-white rounded-br-sm'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-bl-sm'
+                }`}>
+                  <pre className="whitespace-pre-wrap text-xs" style={{ fontFamily: 'inherit' }}>{m.content}</pre>
                 </div>
               </div>
             ))}
-            {/* Streaming content */}
-            {streamedContent && (
+            {loading && (
               <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-2xl px-4 py-2 text-sm bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-slate-200 rounded-bl-md">
-                  <span className="text-xs text-indigo-500 dark:text-indigo-400 font-medium mb-1 block">
-                    AI 助手
-                  </span>
-                  <div className="whitespace-pre-wrap break-words">
-                    {streamedContent}
-                    <span className="inline-block ml-1 animate-pulse">▌</span>
+                <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-2xl rounded-bl-sm">
+                  <div className="flex gap-1">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
             )}
-          </>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <div className="p-3 border-t border-gray-100 dark:border-slate-700">
-        <form onSubmit={handleSubmit} className="flex items-end gap-2">
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"
-              className="w-full px-4 py-2 pr-12 text-sm border border-gray-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 dark:focus:ring-indigo-500 focus:border-transparent bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 resize-none"
-              rows={1}
-              disabled={isLoading}
-            />
-            {isLoading && (
-              <button
-                type="button"
-                onClick={handleStop}
-                className="absolute right-2 bottom-2 w-8 h-8 flex items-center justify-center text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors"
-                title="停止生成"
-              >
-                ⏹
-              </button>
-            )}
+            <div ref={bottomRef} />
           </div>
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="px-4 py-2 bg-indigo-500 dark:bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
-          >
-            {isLoading ? (
-              <span className="flex items-center gap-1">
-                <span className="animate-spin">◌</span>
-              </span>
-            ) : (
-              '发送'
-            )}
-          </button>
-        </form>
-      </div>
-    </div>
+
+          {/* Input */}
+          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex gap-2">
+              <input
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="说点什么..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button
+                onClick={() => send(input)}
+                disabled={!input.trim() || loading}
+                className="w-9 h-9 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white flex items-center justify-center transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
