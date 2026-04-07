@@ -3,37 +3,30 @@
 import { useState, useRef, useEffect } from 'react';
 
 interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
 }
 
-interface TodoChatProps {
-  className?: string;
-}
-
-const SUGGESTIONS = [
-  '加个任务：买鸡蛋',
-  '看看我的任务',
-  '完成了第1个',
-];
-
-export default function TodoChat({ className = '' }: TodoChatProps) {
+export default function TodoChat() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [streamedContent, setStreamedContent] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamedContent]);
 
-  const send = async (text: string) => {
+  const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
-    const userMsg: Message = { role: 'user', content: text };
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
+    setStreamedContent('');
 
     try {
       const res = await fetch('/api/chat', {
@@ -41,24 +34,61 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [...messages, userMsg] }),
       });
-      const data = await res.json() as { content?: string; error?: string };
-      if (data.error) {
-        setMessages(prev => [...prev, { role: 'assistant', content: `出错了：${data.error}` }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: data.content || '处理完成' }]);
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Request failed');
+      }
+
+      // Handle SSE streaming
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let assistantMessage = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.content) {
+                  assistantMessage += parsed.content;
+                  setStreamedContent(assistantMessage);
+                }
+              } catch (e) {
+                // Skip invalid JSON
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      if (assistantMessage) {
+        setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: assistantMessage }]);
       }
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '网络错误，请重试' }]);
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: `出错了：${e instanceof Error ? e.message : String(e)}` }]);
     } finally {
       setLoading(false);
+      setStreamedContent('');
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      send(input);
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
   };
 
   return (
@@ -98,20 +128,23 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
               <div className="text-center text-gray-400 text-sm py-4">
                 <p className="mb-3">👋 你好！告诉我你想做什么：</p>
                 <div className="flex flex-wrap gap-2 justify-center">
-                  {SUGGESTIONS.map((s, i) => (
-                    <button
-                      key={i}
-                      onClick={() => send(s)}
-                      className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
-                    >
-                      {s}
-                    </button>
-                  ))}
+                  <button
+                    onClick={() => sendMessage('加个任务：买鸡蛋')}
+                    className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
+                  >
+                    加个任务：买鸡蛋
+                  </button>
+                  <button
+                    onClick={() => sendMessage('看看我的任务')}
+                    className="text-xs px-3 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-indigo-100 dark:hover:bg-indigo-900 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
+                  >
+                    看看我的任务
+                  </button>
                 </div>
               </div>
             )}
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            {messages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm ${
                   m.role === 'user'
                     ? 'bg-indigo-500 text-white rounded-br-sm'
@@ -121,7 +154,18 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
                 </div>
               </div>
             ))}
-            {loading && (
+            {/* Streaming content */}
+            {streamedContent && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] px-3 py-2 rounded-2xl rounded-bl-sm bg-gray-100 dark:bg-gray-700">
+                  <pre className="whitespace-pre-wrap text-xs text-gray-800 dark:text-gray-100" style={{ fontFamily: 'inherit' }}>
+                    {streamedContent}
+                    <span className="animate-pulse">▌</span>
+                  </pre>
+                </div>
+              </div>
+            )}
+            {loading && !streamedContent && (
               <div className="flex justify-start">
                 <div className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-2xl rounded-bl-sm">
                   <div className="flex gap-1">
@@ -136,17 +180,16 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
           </div>
 
           {/* Input */}
-          <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+          <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-gray-700">
             <div className="flex gap-2">
               <input
                 value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onChange={(e) => setInput(e.target.value)}
                 placeholder="说点什么..."
                 className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-full bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
-                onClick={() => send(input)}
+                type="submit"
                 disabled={!input.trim() || loading}
                 className="w-9 h-9 rounded-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 text-white flex items-center justify-center transition-colors"
               >
@@ -155,7 +198,7 @@ export default function TodoChat({ className = '' }: TodoChatProps) {
                 </svg>
               </button>
             </div>
-          </div>
+          </form>
         </div>
       )}
     </>

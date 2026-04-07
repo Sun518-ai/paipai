@@ -1,42 +1,29 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || '';
-const MINIMAX_BASE_URL = process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com';
+import { streamText } from 'ai';
+import { createMinimax } from 'vercel-minimax-ai-provider';
 
 export const runtime = 'edge';
+export const dynamic = 'force-dynamic';
+
+const minimax = createMinimax({
+  apiKey: process.env.MINIMAX_API_KEY!,
+});
 
 export async function POST(req: Request) {
-  try {
-    const { messages } = await req.json();
+  const { messages } = await req.json();
 
-    if (!MINIMAX_API_KEY) {
-      return NextResponse.json({ error: 'MINIMAX_API_KEY not configured' }, { status: 500 });
-    }
+  const result = await streamText({
+    model: minimax('MiniMax-M2.7'),
+    system: `你是派派点子站的 AI 助手，帮助用户管理待办事项。
 
-    const response = await fetch(`${MINIMAX_BASE_URL}/v1/text/chatcompletion_v2`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${MINIMAX_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'MiniMax-M2.7',
-        messages,
-        stream: false,
-      }),
-    });
+当前功能：
+- 添加、修改、删除待办事项
+- 设置任务优先级（P0-紧急、P1-高、P2-中、P3-低）
+- 置顶重要任务
+- 查看和管理待办列表
 
-    if (!response.ok) {
-      const text = await response.text();
-      return NextResponse.json({ error: `MiniMax API error: ${response.status} - ${text}` }, { status: 500 });
-    }
+请用友好、简洁的方式回复。如果用户询问关于待办事项的操作，请根据上下文提供帮助。`,
+    messages,
+  });
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || '我没有理解，请再说一次';
-
-    return NextResponse.json({ content });
-  } catch (error) {
-    console.error('[chat route]', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
-  }
+  return result.toTextStreamResponse();
 }

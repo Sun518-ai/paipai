@@ -642,36 +642,9 @@ export default function TodoMCVPage() {
               </div>
             )}
 
-            {/* TodoChat Section */}
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-gray-800 dark:text-slate-200 flex items-center gap-2">
-                  <span>💬</span>
-                  AI 助手
-                </h2>
-                <button
-                  onClick={() => setShowChat(!showChat)}
-                  className="text-sm text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-                >
-                  {showChat ? '收起' : '展开'}
-                </button>
-              </div>
-              {showChat && (
-                <TodoChat className="h-96" />
-              )}
-            </div>
+            {/* TodoChat - floating chatbot */}
+            <TodoChat />
           </div>
-
-          {/* Floating Action Button for Chat */}
-          {!showChat && (
-            <button
-              onClick={() => setShowChat(true)}
-              className="fixed bottom-6 right-6 w-14 h-14 bg-indigo-500 dark:bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-all flex items-center justify-center text-2xl z-50"
-              title="打开 AI 助手"
-            >
-              💬
-            </button>
-          )}
         </div>
 
         {deleteConfirm && (
