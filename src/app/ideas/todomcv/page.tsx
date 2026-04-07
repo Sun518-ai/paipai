@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect, useRef, createContext, useContext, useCallback } from 'react';
 import { loadHybrid, saveHybrid } from '@/lib/localStore';
 import { pushToCloud, mergeTodos, type SyncStatus, type Todo as SyncTodo } from '@/lib/todoSync';
+import TodoChat from '@/components/TodoChat';
 
 type Priority = 'P0' | 'P1' | 'P2' | 'P3';
 type RecurringType = 'none' | 'daily' | 'weekly' | 'monthly';
@@ -1014,6 +1015,8 @@ export default function TodoMCVPage() {
             onDeleteTag={deleteTag}
           />
         )}
+
+        <TodoChat />
       </LangContext.Provider>
     </ThemeContext.Provider>
   );
