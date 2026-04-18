@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { ParsedVariable, defaultControls, generateJsonParams, type InferredType } from "../hooks/useVariableParser";
+import { ParsedVariable, defaultControls, type InferredType } from "../hooks/useVariableParser";
+import ParamPreview, { type ParamControl } from "./ParamPreview";
 
 interface ParamGeneratorProps {
   variables: ParsedVariable[];
@@ -48,8 +49,6 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
       options: c.type === "select" ? (c.options ?? ["选项1", "选项2", "选项3"]) : [],
     }))
   );
-  const [copied, setCopied] = useState(false);
-  const [showJson, setShowJson] = useState(false);
 
   // 同步 controls 数量与 variables 变化
   React.useEffect(() => {
@@ -75,32 +74,16 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
     );
   }, []);
 
-  const json = React.useMemo(() => {
-    const obj: Record<string, Record<string, unknown>> = {};
-    for (const ctrl of controls) {
-      obj[ctrl.name] = {
-        type: ctrl.type,
-        label: ctrl.label,
-        default: ctrl.default,
-        ...(ctrl.type === "select" ? { options: ctrl.options } : {}),
-      };
-    }
-    return JSON.stringify(obj, null, 2);
+  // 转换为 ParamPreview 格式
+  const previewControls: ParamControl[] = React.useMemo(() => {
+    return controls.map((ctrl) => ({
+      name: ctrl.name,
+      type: ctrl.type,
+      label: ctrl.label,
+      default: ctrl.default,
+      options: ctrl.options,
+    }));
   }, [controls]);
-
-  React.useEffect(() => {
-    onJsonChange?.(json);
-  }, [json, onJsonChange]);
-
-  const copyJson = async () => {
-    try {
-      await navigator.clipboard.writeText(json);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
-    }
-  };
 
   if (uniqueNames.length === 0) {
     return (
@@ -111,7 +94,7 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* 变量统计 */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -124,12 +107,6 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
             </span>
           )}
         </div>
-        <button
-          onClick={copyJson}
-          className="text-xs px-3 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white transition-colors"
-        >
-          {copied ? "✅ 已复制" : "📋 复制 JSON"}
-        </button>
       </div>
 
       {/* 参数控件列表 */}
@@ -256,20 +233,11 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
         ))}
       </div>
 
-      {/* JSON 预览 */}
-      <div>
-        <button
-          onClick={() => setShowJson((v) => !v)}
-          className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
-        >
-          {showJson ? "▼" : "▶"} JSON 预览
-        </button>
-        {showJson && (
-          <pre className="mt-2 p-3 bg-gray-900 dark:bg-slate-900 rounded-lg text-xs text-green-400 overflow-auto max-h-64 font-mono">
-            {json}
-          </pre>
-        )}
-      </div>
+      {/* JSON 预览 - 使用独立的 ParamPreview 组件 */}
+      <ParamPreview
+        controls={previewControls}
+        onCopy={(json) => onJsonChange?.(json)}
+      />
     </div>
   );
 }
