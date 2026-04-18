@@ -4,14 +4,27 @@ import React, { useState, useCallback } from "react";
 import VariableHighlighter from "./components/VariableHighlighter";
 import ParamGenerator from "./components/ParamGenerator";
 import { parseVariables } from "./hooks/useVariableParser";
+import { useVariableBinding } from "./hooks/useVariableBinding";
 
 export default function HtmlPreviewGeneratorPage() {
   const [description, setDescription] = useState("");
-  const [paramJson, setParamJson] = useState("");
+  const [htmlTemplate, setHtmlTemplate] = useState(
+    "<div>\n  <h1>Hello, {username}!</h1>\n  <p>You have {count} new messages.</p>\n  <p>Theme: {theme}</p>\n</div>"
+  );
+  const [paramValues, setParamValues] = useState<
+    Record<string, string | number | boolean>
+  >({});
   const [leftWidth, setLeftWidth] = useState(50); // percent
   const [isDragging, setIsDragging] = useState(false);
 
   const parsed = React.useMemo(() => parseVariables(description), [description]);
+
+  // 变量绑定 hook：参数值变化 → 防抖 500ms → 替换到 HTML 模板
+  const { renderedHtml, refresh, isPending } = useVariableBinding(
+    htmlTemplate,
+    paramValues,
+    { debounceMs: 500 }
+  );
 
   // 拖拽分割线
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -114,6 +127,24 @@ export default function HtmlPreviewGeneratorPage() {
             </div>
           )}
 
+          {/* HTML 模板编辑区 */}
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-medium text-gray-700 dark:text-slate-300">
+                📄 HTML 模板
+              </h3>
+              <span className="text-xs text-gray-400 dark:text-slate-500">
+                使用 {"{变量名}"} 占位
+              </span>
+            </div>
+            <textarea
+              value={htmlTemplate}
+              onChange={(e) => setHtmlTemplate(e.target.value)}
+              className="w-full h-36 text-xs font-mono rounded-lg border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 px-3 py-2 text-gray-800 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+              placeholder="输入 HTML 模板，使用 {变量名} 占位…"
+            />
+          </div>
+
           {/* 参数生成器 */}
           <div className="mt-4 flex-1 overflow-auto">
             <h3 className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">
@@ -123,7 +154,8 @@ export default function HtmlPreviewGeneratorPage() {
               variables={parsed.variables}
               uniqueNames={parsed.uniqueNames}
               duplicates={parsed.duplicates}
-              onJsonChange={setParamJson}
+              onJsonChange={() => {}}
+              onValuesChange={setParamValues}
             />
           </div>
         </div>
@@ -146,27 +178,38 @@ export default function HtmlPreviewGeneratorPage() {
               🖥️ HTML 预览
             </h2>
             <div className="flex items-center gap-2">
-              {paramJson && (
+              {Object.keys(paramValues).length > 0 && (
+                <button
+                  onClick={refresh}
+                  disabled={isPending}
+                  className="flex items-center gap-1 text-xs px-3 py-1 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-300 text-white transition-colors"
+                >
+                  {isPending ? "⏳ 渲染中…" : "🔄 刷新预览"}
+                </button>
+              )}
+              {Object.keys(paramValues).length > 0 && (
                 <span className="text-xs text-gray-400 dark:text-slate-500">
-                  基于 {parsed.uniqueNames.length} 个参数生成
+                  基于 {Object.keys(paramValues).length} 个参数渲染
                 </span>
               )}
             </div>
           </div>
 
-          <div className="flex-1 rounded-xl border-2 border-dashed border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center">
-            {description ? (
+          <div className="flex-1 rounded-xl border-2 border-dashed border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-auto">
+            {Object.keys(paramValues).length > 0 ? (
+              <div
+                className="p-6"
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
+            ) : description ? (
               <div className="text-center px-6">
                 <div className="text-4xl mb-3">🚀</div>
                 <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">
-                  填写左侧参数后，点击生成按钮
+                  填写左侧参数后，预览将自动生成
                 </p>
                 <p className="text-xs text-gray-400 dark:text-slate-500">
                   HTML 预览将在这里显示
                 </p>
-                <button className="mt-4 px-4 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  生成 HTML
-                </button>
               </div>
             ) : (
               <div className="text-center px-6">

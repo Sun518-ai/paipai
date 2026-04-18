@@ -110,7 +110,7 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
   // 初始时上报默认值
   React.useEffect(() => {
     const init: Record<string, string | number | boolean> = {};
-    for (const c of controls) {
+    for (const c of defaultControls(uniqueNames)) {
       init[c.name] = c.default;
     }
     setValues(init);
@@ -275,6 +275,63 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
             )}
           </div>
         ))}
+      </div>
+
+      {/* 参数值输入区 - 供变量绑定使用 */}
+      <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 p-4 space-y-3">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
+            ✏️ 参数值输入
+          </span>
+          <span className="text-xs text-indigo-400">（填入的值会替换 HTML 中的 {"{变量}"}）</span>
+        </div>
+
+        <div className="space-y-2">
+          {controls.map((ctrl) => (
+            <div key={ctrl.name} className="flex items-center gap-2">
+              <code className="text-xs font-mono bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-200 px-1.5 py-0.5 rounded min-w-[80px] truncate">
+                {`{${ctrl.name}}`}
+              </code>
+              <label className="text-xs text-gray-500 dark:text-slate-400 min-w-[40px]">
+                {ctrl.label}
+              </label>
+
+              {ctrl.type === "boolean" ? (
+                <button
+                  onClick={() => updateValue(ctrl.name, !values[ctrl.name])}
+                  className={`flex-1 text-sm rounded-md border px-2 py-1 text-left transition-colors ${
+                    values[ctrl.name]
+                      ? "bg-green-100 border-green-300 text-green-800"
+                      : "bg-gray-100 border-gray-200 text-gray-600"
+                  }`}
+                >
+                  {values[ctrl.name] ? "✅ true" : "○ false"}
+                </button>
+              ) : ctrl.type === "select" ? (
+                <select
+                  value={String(values[ctrl.name] ?? "")}
+                  onChange={(e) => updateValue(ctrl.name, e.target.value)}
+                  className="flex-1 text-sm rounded-md border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-gray-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  {ctrl.options.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={ctrl.type === "number" ? "number" : ctrl.type}
+                  value={String(values[ctrl.name] ?? "")}
+                  onChange={(e) => {
+                    const v = ctrl.type === "number" ? Number(e.target.value) : e.target.value;
+                    updateValue(ctrl.name, v);
+                  }}
+                  placeholder={`请输入 ${ctrl.label}…`}
+                  className="flex-1 text-sm rounded-md border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-gray-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-gray-300 dark:placeholder:text-slate-600"
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* JSON 预览 - 使用独立的 ParamPreview 组件 */}

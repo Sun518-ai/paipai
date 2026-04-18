@@ -34,7 +34,7 @@ export interface UseVariableBindingResult {
 /**
  * 核心替换函数
  * 将 template 中的 {var} 替换为 paramValues 中对应的值
- * 支持嵌套语法: {user.name} → 直接替换完整 key
+ * 支持嵌套语法: {user.name} → 直接按完整 key 替换
  */
 export function replaceVariables(
   template: string,
@@ -43,10 +43,7 @@ export function replaceVariables(
   let result = template;
 
   for (const [key, value] of Object.entries(paramValues)) {
-    // 构建完整的占位符，如 {username} 或 {user.name}
     const placeholder = `{${key}}`;
-    // 替换所有出现的该占位符
-    // 使用 String() 确保数字和布尔值被正确转换为字符串
     result = result.split(placeholder).join(String(value));
   }
 
@@ -110,7 +107,6 @@ export function useVariableBinding(
 
   // 参数变化时，防抖触发替换
   useEffect(() => {
-    // 快速路径：值未变化则跳过
     const valueChanged =
       Object.keys(paramValues).length !== Object.keys(lastValues).length ||
       Object.entries(paramValues).some(
@@ -136,7 +132,6 @@ export function useVariableBinding(
   // 模板变化时立即替换
   useEffect(() => {
     if (template !== templateRef.current) {
-      // 模板变了，取消防抖，立即替换
       cancelPending();
       doReplace();
     }
