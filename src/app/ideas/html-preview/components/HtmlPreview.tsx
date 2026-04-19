@@ -19,39 +19,13 @@ const HtmlPreviewComponent = forwardRef<HtmlPreviewHandle, HtmlPreviewProps>(
     const codeRef = useRef<HTMLElement>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const isStreamingRef = useRef(false);
-    const streamDocRef = useRef<string>('');
 
     // Expose writeChunk via ref so parent can stream HTML in real-time
     useImperativeHandle(ref, () => ({
       writeChunk: (chunk: string) => {
         if (!iframeRef.current) return;
-        const iframe = iframeRef.current;
-
-        if (!isStreamingRef.current) {
-          // First chunk - initialize with document.write for streaming
-          isStreamingRef.current = true;
-          try {
-            iframe.contentDocument?.open();
-            iframe.contentDocument?.write(chunk);
-            iframe.contentDocument?.close();
-          } catch {
-            // Fallback to srcdoc
-            iframe.srcdoc = chunk;
-          }
-        } else {
-          // Subsequent chunks - incrementally write to body
-          try {
-            const doc = iframe.contentDocument;
-            if (doc && doc.body) {
-              doc.open();
-              doc.write(chunk);
-              doc.close();
-            }
-          } catch {
-            // Fallback to srcdoc
-            iframe.srcdoc = chunk;
-          }
-        }
+        isStreamingRef.current = true;
+        iframeRef.current.srcdoc = chunk;
       },
     }));
 
@@ -135,7 +109,7 @@ const HtmlPreviewComponent = forwardRef<HtmlPreviewHandle, HtmlPreviewProps>(
             />
           ) : (
             <div className="h-full overflow-auto bg-gray-50">
-              <pre className="p-4 m-0">
+              <pre className="p-4 m-0 whitespace-pre-wrap break-all">
                 <code ref={codeRef} className="hljs text-sm">
                   {html || '// 代码将在这里显示'}
                 </code>
