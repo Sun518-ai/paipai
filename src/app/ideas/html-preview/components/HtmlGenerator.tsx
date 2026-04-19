@@ -6,12 +6,15 @@ interface HtmlGeneratorProps {
   description: string;
   params: Record<string, unknown>;
   onHtmlChange?: (html: string) => void;
+  /** Called after each chunk with accumulated cleaned HTML for real-time preview */
+  onChunk?: (html: string) => void;
 }
 
 export default function HtmlGenerator({
   description,
   params,
   onHtmlChange,
+  onChunk,
 }: HtmlGeneratorProps) {
   const [htmlCode, setHtmlCode] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -77,29 +80,28 @@ export default function HtmlGenerator({
 
         const chunk = decoder.decode(value, { stream: true });
         
-        // Parse SSE data - handle both text/event-stream format and raw text
+        // Parse SSE data - handle both SSE and raw text formats
         const lines = chunk.split("\n");
         for (const line of lines) {
           // Skip empty lines and event markers
           if (!line.trim() || line.startsWith(":")) continue;
-          
+
           // Parse SSE data line
           const dataMatch = line.match(/^data:\s*(.*)$/);
           if (dataMatch) {
             const data = dataMatch[1];
-            
+
             // Handle [DONE] signal
             if (data === "[DONE]") {
               continue;
             }
-            
+
             try {
               // Parse JSON data from AI SDK data stream format
               const jsonData = JSON.parse(data);
-              
+
               // Extract text content from various possible formats
               let textContent = "";
-              
               if (typeof jsonData === "string") {
                 textContent = jsonData;
               } else if (jsonData.text) {
@@ -108,20 +110,37 @@ export default function HtmlGenerator({
                 textContent = jsonData.content;
               } else if (jsonData.delta) {
                 textContent = jsonData.delta;
+              } else if (jsonData.choices?.[0]?.delta?.content) {
+                textContent = jsonData.choices[0].delta.content;
               }
-              
+
               if (textContent) {
                 fullHtml += textContent;
-                setHtmlCode(fullHtml);
+              } else {
+                // Not JSON - treat raw data as text content
+                const raw = data.trim();
+                if (raw) fullHtml += raw;
               }
             } catch {
-              // If not JSON, treat as raw text content
-              if (data.trim()) {
-                fullHtml += data;
-                setHtmlCode(fullHtml);
-              }
+              // If JSON parse fails, treat raw line as text
+              const raw = data.trim();
+              if (raw) fullHtml += raw;
             }
+          } else {
+            // Non-SSE line - treat as raw text
+            const raw = line.trim();
+            if (raw) fullHtml += raw;
           }
+
+          // Strip markdown markers and update state for every chunk
+          const cleaned = fullHtml
+            .replace(/^```html\s*/im, '')
+            .replace(/^```\s*/im, '')
+            .replace(/\s*```\s*$/im, '')
+            .trim();
+
+          setHtmlCode(fullHtml);
+          if (cleaned) onChunk?.(cleaned);
         }
       }
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import VariableParser, { Variable } from './components/VariableParser';
 import ParamGenerator from './components/ParamGenerator';
 import HtmlGenerator from './components/HtmlGenerator';
-import HtmlPreview from './components/HtmlPreview';
+import HtmlPreview, { HtmlPreviewHandle } from './components/HtmlPreview';
 
 const DEFAULT_HTML = `<!DOCTYPE html>
 <html>
@@ -46,6 +46,11 @@ export default function HtmlPreviewPage() {
   const [extractedVariables, setExtractedVariables] = useState<ExtractedVariable[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [html, setHtml] = useState(DEFAULT_HTML);
+  const previewRef = useRef<HtmlPreviewHandle>(null);
+
+  const handlePreviewChunk = useCallback((chunk: string) => {
+    previewRef.current?.writeChunk(chunk);
+  }, []);
 
   // Step state
   const [currentStep, setCurrentStep] = useState<'input' | 'confirm' | 'generate'>('input');
@@ -371,6 +376,7 @@ export default function HtmlPreviewPage() {
                     description={optimizedDescription}
                     params={paramValues}
                     onHtmlChange={setHtml}
+                    onChunk={handlePreviewChunk}
                   />
                 </div>
               </div>
@@ -412,7 +418,7 @@ export default function HtmlPreviewPage() {
               <span className="text-xs text-gray-400 dark:text-slate-500">{html.length} 字符</span>
             </div>
             <div className="h-[calc(100%-2rem)]">
-              <HtmlPreview html={html} />
+              <HtmlPreview ref={previewRef} html={html} />
             </div>
           </div>
         </div>
