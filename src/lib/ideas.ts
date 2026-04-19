@@ -82,4 +82,13 @@ export const ideas: Idea[] = [
     date: '2026-03-21',
     icon: '⏰',
   },
+  {
+    id: 'html-preview',
+    title: 'HTML 预览生成器',
+    description: '✨ 用自然语言描述你想要的网页，AI 自动生成 HTML 代码并实时预览！支持变量绑定、参数控件生成、iframe 安全渲染。',
+    tags: ['AI', 'HTML', '实时预览', 'MiniMax'],
+    status: 'done',
+    date: '2026-04-18',
+    icon: '🎨',
+  },
 ];
