@@ -5,7 +5,7 @@ import Link from 'next/link';
 import VariableParser, { Variable } from './components/VariableParser';
 import ParamGenerator from './components/ParamGenerator';
 import HtmlGenerator from './components/HtmlGenerator';
-import HtmlPreview, { HtmlPreviewHandle } from './components/HtmlPreview';
+import HtmlPreview from './components/HtmlPreview';
 
 const DEFAULT_HTML = `<!DOCTYPE html>
 <html>
@@ -46,10 +46,10 @@ export default function HtmlPreviewPage() {
   const [extractedVariables, setExtractedVariables] = useState<ExtractedVariable[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [html, setHtml] = useState(DEFAULT_HTML);
-  const previewRef = useRef<HtmlPreviewHandle>(null);
+  const [renderedHtml, setRenderedHtml] = useState(DEFAULT_HTML);
 
   const handlePreviewChunk = useCallback((chunk: string) => {
-    previewRef.current?.writeChunk(chunk);
+    setHtml(chunk);
   }, []);
 
   // Step state
@@ -132,6 +132,18 @@ export default function HtmlPreviewPage() {
     };
   }, [isDragging]);
 
+  // Re-render template with current param values whenever they change
+  useEffect(() => {
+    if (!html || html === DEFAULT_HTML) return;
+    let result = html;
+    // Replace {{variableName}} with actual param values
+    for (const [key, value] of Object.entries(paramValues)) {
+      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+      result = result.replace(regex, value || '');
+    }
+    setRenderedHtml(result);
+  }, [html, paramValues]);
+
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
     setTheme(next);
@@ -197,7 +209,7 @@ export default function HtmlPreviewPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          htmlTemplate: html,
+          htmlTemplate: html, // export the template with {{variables}}
           variables: extractedVariables,
           description,
         }),
@@ -413,11 +425,11 @@ export default function HtmlPreviewPage() {
                     {isExporting ? '导出中...' : '📦 导出 ZIP'}
                   </button>
                 )}
-                <span className="text-xs text-gray-400 dark:text-slate-500">{html.length} 字符</span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{renderedHtml.length} 字符</span>
               </div>
             </div>
             <div className="h-[calc(100%-2rem)]">
-              <HtmlPreview ref={previewRef} html={html} />
+              <HtmlPreview html={renderedHtml} />
             </div>
           </div>
         </div>
