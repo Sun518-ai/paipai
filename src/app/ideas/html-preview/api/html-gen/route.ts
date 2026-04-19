@@ -4,16 +4,15 @@ import { getModel } from '@/lib/aiProvider';
 
 /**
  * HTML Generation API Route - MiniMax SSE Streaming
- * 
+ *
  * Accepts POST requests with:
  * - description: string - 功能描述
  * - params: Record<string, unknown> - 用户填入的参数值
- * 
- * Returns SSE stream of generated HTML code
+ *
+ * Returns SSE stream of generated HTML code with {{variable}} placeholders
  */
 export async function POST(req: NextRequest) {
   try {
-    // Validate API key is configured
     try {
       getModel();
     } catch {
@@ -33,24 +32,25 @@ export async function POST(req: NextRequest) {
       return new Response('description is required', { status: 400 });
     }
 
-    // Build prompt with description and parameters
-    const prompt = `根据以下功能描述和参数生成HTML代码。
-功能描述: ${description}
-参数: ${JSON.stringify(params, null, 2)}
-仅返回HTML代码不要其他内容。生成的HTML应该包含内联CSS样式，使其视觉效果美观。`;
-
     const result = await streamText({
       model: getModel(),
-      system: '你是一个专业的HTML代码生成助手。根据用户提供的功能描述和参数，生成高质量的HTML代码。确保代码完整、可运行，包含内联CSS样式。永远只返回HTML代码，不要返回任何解释或markdown代码块标记。',
+      system: `你是一个专业的HTML模板生成助手。
+根据用户描述生成HTML模板代码。
+规则：
+1. 使用 Tailwind CSS（通过CDN引入：https://cdn.tailwindcss.com）
+2. 所有变量用 {{变量名}} 占位符，如 {{title}}、{{content}}、{{count}}
+3. 变量名使用英文驼峰命名
+4. 深色渐变背景 + 玻璃拟态（glass morphism）风格
+5. 视觉效果现代、美观、专业
+6. 只返回HTML代码，不要任何解释、markdown代码块或注释`,
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: `生成HTML模板：${description}`,
         },
       ],
     });
 
-    // Return text stream response
     return result.toTextStreamResponse();
 
   } catch (error) {

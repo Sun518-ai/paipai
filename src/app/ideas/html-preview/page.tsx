@@ -62,6 +62,7 @@ export default function HtmlPreviewPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  const [isExporting, setIsExporting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Detect mobile
@@ -186,6 +187,36 @@ export default function HtmlPreviewPage() {
 
   const handleEditDescription = () => {
     setCurrentStep('input');
+  };
+
+  const handleExport = async () => {
+    if (!html || html === DEFAULT_HTML) return;
+    setIsExporting(true);
+    try {
+      const res = await fetch('/ideas/html-preview/api/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          htmlTemplate: html,
+          variables: extractedVariables,
+          description,
+        }),
+      });
+      if (!res.ok) throw new Error('导出失败');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `html-preview-${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert((err as Error).message || '导出失败');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const bgStyle = {
@@ -372,7 +403,18 @@ export default function HtmlPreviewPage() {
           <div className="h-full p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">👁️ 实时预览</h3>
-              <span className="text-xs text-gray-400 dark:text-slate-500">{html.length} 字符</span>
+              <div className="flex items-center gap-2">
+                {html && html !== DEFAULT_HTML && (
+                  <button
+                    onClick={handleExport}
+                    disabled={isExporting}
+                    className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    {isExporting ? '导出中...' : '📦 导出 ZIP'}
+                  </button>
+                )}
+                <span className="text-xs text-gray-400 dark:text-slate-500">{html.length} 字符</span>
+              </div>
             </div>
             <div className="h-[calc(100%-2rem)]">
               <HtmlPreview ref={previewRef} html={html} />
