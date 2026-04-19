@@ -14,10 +14,11 @@ export async function POST(req: NextRequest) {
       model: getModel(),
       system: `You are an expert HTML generation assistant. Your task is to:
 1. Analyze the user's natural language description
-2. Enhance it into a detailed, specific HTML generation prompt with exact styling details (colors, spacing, fonts, visual effects)
-3. Extract all configurable parameters (text content, colors, numbers, etc.) as typed variables
-4. Return ONLY a valid JSON object with fields: optimizedDescription (string) and variables (array of {name, type, label, defaultValue})
-5. Do NOT include any markdown code blocks, explanations, or any text outside the JSON`,
+2. Enhance it into a detailed HTML generation prompt - focus on structure and content, NOT inline styles
+3. Extract ONLY content/data variables that a user would want to customize (text labels, titles, images, numbers for content like prices/ages, URLs)
+4. DO NOT extract style variables (colors, sizes, fonts, spacing, border-radius, shadows, etc.) - those are handled automatically by the AI
+5. Return ONLY a valid JSON object with fields: optimizedDescription (string) and variables (array of {name, type, label, defaultValue})
+6. Do NOT include any markdown code blocks, explanations, or any text outside the JSON`,
       messages: [
         {
           role: 'user',
@@ -26,10 +27,11 @@ export async function POST(req: NextRequest) {
 描述：${description}
 
 要求：
-- 将描述增强为更详细的HTML生成提示词，包含具体的样式规格
-- 提取所有可配置的参数（如文字内容、颜色、尺寸等）
+- 将描述增强为更详细的HTML生成提示词，聚焦内容结构和数据
+- 仅提取内容/数据相关变量（如：标题文字、价格数字、描述内容、图片URL、数量等）
+- 不要提取样式变量（颜色、字体大小、间距、圆角、阴影等）- 这些由AI自动处理
 - 变量名使用英文驼峰命名
-- 类型：text(文本输入)、color(颜色选择)、number(数字输入)、textarea(多行文本)
+- 类型：text(短文本)、textarea(长文本)、number(数字)
 - 为每个变量提供合理的中文标签和默认值
 - 仅返回JSON格式，不要任何markdown代码块标记`,
         },
