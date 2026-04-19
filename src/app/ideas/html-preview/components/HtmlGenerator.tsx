@@ -6,8 +6,10 @@ interface HtmlGeneratorProps {
   description: string;
   params: Record<string, unknown>;
   onHtmlChange?: (html: string) => void;
-  /** Called after each chunk with accumulated cleaned HTML for real-time preview */
+  /** Called after each chunk with accumulated cleaned HTML */
   onChunk?: (html: string) => void;
+  /** Called when generation stream completes */
+  onComplete?: () => void;
 }
 
 export default function HtmlGenerator({
@@ -15,6 +17,7 @@ export default function HtmlGenerator({
   params,
   onHtmlChange,
   onChunk,
+  onComplete,
 }: HtmlGeneratorProps) {
   const [htmlCode, setHtmlCode] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -167,8 +170,9 @@ export default function HtmlGenerator({
       }
     } finally {
       setIsLoading(false);
+      onComplete?.();
     }
-  }, [description, params, onHtmlChange]);
+  }, [description, params, onHtmlChange, onComplete]);
 
   // Cleanup on unmount
   useEffect(() => {

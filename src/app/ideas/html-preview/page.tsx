@@ -47,9 +47,15 @@ export default function HtmlPreviewPage() {
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [html, setHtml] = useState(DEFAULT_HTML);
   const [renderedHtml, setRenderedHtml] = useState(DEFAULT_HTML);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const handlePreviewChunk = useCallback((chunk: string) => {
+    setIsGenerating(true);
     setHtml(chunk);
+  }, []);
+
+  const handleGenerateComplete = useCallback(() => {
+    setIsGenerating(false);
   }, []);
 
   // Step state
@@ -132,17 +138,16 @@ export default function HtmlPreviewPage() {
     };
   }, [isDragging]);
 
-  // Re-render template with current param values whenever they change
+  // Re-render template with current param values - skip during generation
   useEffect(() => {
-    if (!html || html === DEFAULT_HTML) return;
+    if (!html || html === DEFAULT_HTML || isGenerating) return;
     let result = html;
-    // Replace {{variableName}} with actual param values
     for (const [key, value] of Object.entries(paramValues)) {
       const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
       result = result.replace(regex, value || '');
     }
     setRenderedHtml(result);
-  }, [html, paramValues]);
+  }, [html, paramValues, isGenerating]);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
@@ -368,6 +373,7 @@ export default function HtmlPreviewPage() {
                     params={paramValues}
                     onHtmlChange={setHtml}
                     onChunk={handlePreviewChunk}
+                    onComplete={handleGenerateComplete}
                   />
                 </div>
 
