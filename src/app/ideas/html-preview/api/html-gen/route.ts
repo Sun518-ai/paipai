@@ -48,11 +48,10 @@ export async function POST(req: NextRequest) {
           content: prompt,
         },
       ],
-      maxTokens: 8192,
     });
 
-    // Return SSE stream response
-    return result.toDataStreamResponse();
+    // Return text stream response
+    return result.toTextStreamResponse();
 
   } catch (error) {
     console.error('[html-gen route]', error);

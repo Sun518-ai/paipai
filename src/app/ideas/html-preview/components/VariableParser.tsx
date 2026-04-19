@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 export interface Variable {
   name: string;
@@ -9,32 +9,18 @@ export interface Variable {
   label: string;
 }
 
-/**
- * Parse variables from description text.
- * Supports: {{varName}}, {{varName=defaultValue}}, {{varName:type=defaultValue}}
- * Types: text, color, number, textarea
- */
 export function parseVariables(description: string): Variable[] {
   const regex = /\{\{([^}=]+)(?::([^}=]+))?(?:=([^}]*))?\}\}/g;
   const vars: Variable[] = [];
   let match;
-
   while ((match = regex.exec(description)) !== null) {
     const name = match[1].trim();
     const type = (match[2]?.trim() as Variable['type']) || 'text';
     const defaultValue = match[3]?.trim() || '';
-
-    // Avoid duplicates
     if (!vars.find(v => v.name === name)) {
-      vars.push({
-        name,
-        type,
-        defaultValue,
-        label: name,
-      });
+      vars.push({ name, type, defaultValue, label: name });
     }
   }
-
   return vars;
 }
 
@@ -51,17 +37,11 @@ export default function VariableParser({ description, onVariablesChange }: Varia
   const [newVarDefault, setNewVarDefault] = useState('');
 
   const detected = parseVariables(description);
-
   const allVariables = [...detected, ...manualVars.filter(mv => !detected.find(d => d.name === mv.name))];
 
   const handleAddManual = () => {
     if (!newVarName.trim()) return;
-    const newVar: Variable = {
-      name: newVarName.trim(),
-      type: newVarType,
-      defaultValue: newVarDefault,
-      label: newVarName.trim(),
-    };
+    const newVar: Variable = { name: newVarName.trim(), type: newVarType, defaultValue: newVarDefault, label: newVarName.trim() };
     const updated = [...manualVars, newVar];
     setManualVars(updated);
     onVariablesChange([...detected, ...updated.filter(mv => !detected.find(d => d.name === mv.name))]);
@@ -71,12 +51,6 @@ export default function VariableParser({ description, onVariablesChange }: Varia
 
   const handleRemoveManual = (name: string) => {
     const updated = manualVars.filter(v => v.name !== name);
-    setManualVars(updated);
-    onVariablesChange([...detected, ...updated.filter(mv => !detected.find(d => d.name === mv.name))]);
-  };
-
-  const handleUpdateManual = (name: string, updates: Partial<Variable>) => {
-    const updated = manualVars.map(v => v.name === name ? { ...v, ...updates } : v);
     setManualVars(updated);
     onVariablesChange([...detected, ...updated.filter(mv => !detected.find(d => d.name === mv.name))]);
   };
@@ -99,7 +73,7 @@ export default function VariableParser({ description, onVariablesChange }: Varia
         </p>
       ) : (
         <div className="space-y-2">
-          {allVariables.map(v => (
+          {allVariables.map((v: Variable) => (
             <div key={v.name} className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -115,10 +89,7 @@ export default function VariableParser({ description, onVariablesChange }: Varia
                 </span>
               </div>
               {manualVars.find(mv => mv.name === v.name) && (
-                <button
-                  onClick={() => handleRemoveManual(v.name)}
-                  className="text-gray-400 hover:text-red-400 dark:text-slate-500 dark:hover:text-red-400 transition-colors text-sm"
-                >
+                <button onClick={() => handleRemoveManual(v.name)} className="text-gray-400 hover:text-red-400 dark:text-slate-500 dark:hover:text-red-400 transition-colors text-sm">
                   🗑️
                 </button>
               )}
@@ -130,17 +101,13 @@ export default function VariableParser({ description, onVariablesChange }: Varia
       {showManual && (
         <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800 space-y-2">
           <p className="text-xs font-medium text-amber-700 dark:text-amber-400">添加自定义变量</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <input
-              type="text"
-              value={newVarName}
-              onChange={e => setNewVarName(e.target.value)}
-              placeholder="变量名"
-              className="flex-1 px-2.5 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              type="text" value={newVarName} onChange={e => setNewVarName(e.target.value)} placeholder="变量名"
+              className="flex-1 min-w-[80px] px-2.5 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-400"
             />
             <select
-              value={newVarType}
-              onChange={e => setNewVarType(e.target.value as Variable['type'])}
+              value={newVarType} onChange={e => setNewVarType(e.target.value as Variable['type'])}
               className="px-2 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 focus:outline-none"
             >
               <option value="text">文本</option>
@@ -149,16 +116,10 @@ export default function VariableParser({ description, onVariablesChange }: Varia
               <option value="textarea">多行文本</option>
             </select>
             <input
-              type={newVarType === 'color' ? 'color' : 'text'}
-              value={newVarDefault}
-              onChange={e => setNewVarDefault(e.target.value)}
-              placeholder="默认值"
+              type={newVarType === 'color' ? 'color' : 'text'} value={newVarDefault} onChange={e => setNewVarDefault(e.target.value)} placeholder="默认值"
               className="w-24 px-2.5 py-1.5 text-sm border border-gray-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 focus:outline-none"
             />
-            <button
-              onClick={handleAddManual}
-              className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors"
-            >
+            <button onClick={handleAddManual} className="px-3 py-1.5 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors">
               添加
             </button>
           </div>
