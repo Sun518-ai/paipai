@@ -24,21 +24,33 @@ const HtmlPreviewComponent = forwardRef<HtmlPreviewHandle, HtmlPreviewProps>(
     // Expose writeChunk via ref so parent can stream HTML in real-time
     useImperativeHandle(ref, () => ({
       writeChunk: (chunk: string) => {
-        if (!iframeRef.current?.contentDocument) return;
-        const doc = iframeRef.current.contentDocument;
-        if (!doc.body) return;
+        if (!iframeRef.current) return;
+        const iframe = iframeRef.current;
 
-        // First chunk - initialize the document
         if (!isStreamingRef.current) {
+          // First chunk - initialize with document.write for streaming
           isStreamingRef.current = true;
-          streamDocRef.current = chunk;
-          iframeRef.current.srcdoc = chunk;
+          try {
+            iframe.contentDocument?.open();
+            iframe.contentDocument?.write(chunk);
+            iframe.contentDocument?.close();
+          } catch {
+            // Fallback to srcdoc
+            iframe.srcdoc = chunk;
+          }
         } else {
-          // Subsequent chunks - append to body
-          streamDocRef.current = chunk;
-          // For streaming, we replace the entire srcdoc since we can't easily append
-          // But we store the latest to avoid re-creation
-          iframeRef.current.srcdoc = chunk;
+          // Subsequent chunks - incrementally write to body
+          try {
+            const doc = iframe.contentDocument;
+            if (doc && doc.body) {
+              doc.open();
+              doc.write(chunk);
+              doc.close();
+            }
+          } catch {
+            // Fallback to srcdoc
+            iframe.srcdoc = chunk;
+          }
         }
       },
     }));

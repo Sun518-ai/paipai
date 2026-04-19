@@ -177,7 +177,7 @@ export default function HtmlPreviewPage() {
     if (!optimizedDescription.trim()) {
       return;
     }
-    setCurrentStep('generate');
+    // Already in confirm step - no step change needed, HtmlGenerator is shown in confirm step
   };
 
   const handleBack = () => {
@@ -225,14 +225,9 @@ export default function HtmlPreviewPage() {
             输入描述
           </span>
           <span className="text-gray-300">→</span>
-          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'confirm' ? 'bg-indigo-500 text-white' : currentStep === 'generate' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300' : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'}`}>
-            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">{currentStep === 'generate' ? '✓' : '2'}</span>
-            确认变量
-          </span>
-          <span className="text-gray-300">→</span>
-          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'generate' ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'}`}>
-            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">3</span>
-            生成预览
+          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'confirm' ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'}`}>
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">2</span>
+            确认变量 &amp; 生成
           </span>
         </div>
       </div>
@@ -240,7 +235,7 @@ export default function HtmlPreviewPage() {
       {/* Main dual-panel layout */}
       <div
         className={`max-w-[1600px] mx-auto px-4 pb-6 ${isMobile ? 'flex flex-col' : 'relative'}`}
-        style={isMobile ? {} : { height: 'calc(100vh - 140px)' }}
+        style={isMobile ? {} : { height: 'calc(100vh - 100px)' }}
       >
         {/* Left Panel */}
         <div
@@ -323,54 +318,7 @@ export default function HtmlPreviewPage() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleBack}
-                    className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-300 font-medium rounded-xl transition-colors"
-                  >
-                    ← 返回修改
-                  </button>
-                  <button
-                    onClick={handleGenerate}
-                    className="flex-1 py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
-                  >
-                    🚀 生成 HTML
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Generate (show generator) */}
-            {currentStep === 'generate' && (
-              <div className="space-y-4">
-                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800">
-                  <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-1">✅ 准备就绪</p>
-                  <p className="text-xs text-green-600 dark:text-green-400">参数已确认，点击下方按钮开始生成 HTML</p>
-                </div>
-
-                <div className="space-y-2">
-                  <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">🤖 AI 优化后的描述</h3>
-                  <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 text-sm text-gray-600 dark:text-slate-400 whitespace-pre-wrap">
-                    {optimizedDescription}
-                  </div>
-                </div>
-
-                {extractedVariables.length > 0 && (
-                  <div className="space-y-2">
-                    <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">⚙️ 当前参数值</h3>
-                    <ParamGenerator
-                      variables={extractedVariables.map(v => ({
-                        name: v.name,
-                        type: v.type,
-                        label: v.label,
-                        defaultValue: v.defaultValue,
-                      }))}
-                      values={paramValues}
-                      onChange={handleParamChange}
-                    />
-                  </div>
-                )}
-
+                {/* HtmlGenerator: shows inline for immediate generation */}
                 <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
                   <HtmlGenerator
                     description={optimizedDescription}
@@ -378,6 +326,15 @@ export default function HtmlPreviewPage() {
                     onHtmlChange={setHtml}
                     onChunk={handlePreviewChunk}
                   />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBack}
+                    className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-300 font-medium rounded-xl transition-colors"
+                  >
+                    ← 返回修改描述
+                  </button>
                 </div>
               </div>
             )}
