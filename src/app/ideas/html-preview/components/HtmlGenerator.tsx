@@ -39,6 +39,8 @@ export default function HtmlGenerator({
     }
 
     abortControllerRef.current = new AbortController();
+    // 60 second timeout
+    const timeoutId = setTimeout(() => abortControllerRef.current?.abort(), 60_000);
     setIsLoading(true);
     setError(null);
     setHtmlCode("");
@@ -125,12 +127,15 @@ export default function HtmlGenerator({
         }
       }
 
+      clearTimeout(timeoutId);
       setProgress("");
     } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        setProgress("已取消");
+      clearTimeout(timeoutId);
+      const error = err as Error;
+      if (error.name === "AbortError" || error.name === "DOMException") {
+        setProgress("请求超时，请重试");
       } else {
-        setError((err as Error).message || "生成失败");
+        setError(error.message || "生成失败");
       }
     } finally {
       setIsLoading(false);
