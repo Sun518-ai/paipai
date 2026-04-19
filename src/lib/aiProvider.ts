@@ -6,10 +6,10 @@
  *   const model = getModel();
  */
 
-import { createMinimax } from 'vercel-minimax-ai-provider';
+import { createMinimaxOpenAI } from 'vercel-minimax-ai-provider';
 
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
-const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-Text-01';
+const MINIMAX_MODEL = process.env.MINIMAX_MODEL || 'MiniMax-M2.7';
 
 // Validate API key at module load time (only in server-side code)
 if (!MINIMAX_API_KEY) {
@@ -19,8 +19,9 @@ if (!MINIMAX_API_KEY) {
 /**
  * MiniMax Provider 实例
  */
-export const minimaxProvider = createMinimax({
+export const minimaxProvider = createMinimaxOpenAI({
   apiKey: MINIMAX_API_KEY,
+  baseURL: process.env.MINIMAX_BASE_URL || 'https://api.minimaxi.com/v1',
 });
 
 /**

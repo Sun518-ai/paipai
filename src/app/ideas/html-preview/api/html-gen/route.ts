@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Return text stream response
+    return result.toTextStreamResponse();
 
   } catch (error) {
     console.error('[html-gen route]', error);
