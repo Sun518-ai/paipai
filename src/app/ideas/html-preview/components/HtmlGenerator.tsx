@@ -113,18 +113,27 @@ export default function HtmlGenerator({
               if (textContent) {
                 fullHtml += textContent;
                 setHtmlCode(fullHtml);
-                onHtmlChange?.(fullHtml);
               }
             } catch {
               // If not JSON, treat as raw text content
               if (data.trim()) {
                 fullHtml += data;
                 setHtmlCode(fullHtml);
-                onHtmlChange?.(fullHtml);
               }
             }
           }
         }
+      }
+
+      // Strip markdown code block markers before passing to preview
+      const cleanedHtml = fullHtml
+        .replace(/^```html\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      if (cleanedHtml) {
+        onHtmlChange?.(cleanedHtml);
       }
 
       clearTimeout(timeoutId);

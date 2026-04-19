@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import VariableParser, { Variable, parseVariables } from './components/VariableParser';
+import VariableParser, { Variable } from './components/VariableParser';
 import ParamGenerator from './components/ParamGenerator';
 import HtmlGenerator from './components/HtmlGenerator';
 import HtmlPreview from './components/HtmlPreview';
@@ -15,20 +15,10 @@ const DEFAULT_HTML = `<!DOCTYPE html>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
-    .card {
-      background: white;
-      padding: 40px;
-      border-radius: 20px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      text-align: center;
-      max-width: 400px;
-    }
+    .card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; max-width: 400px; }
     h1 { color: #333; margin-bottom: 10px; }
     p { color: #666; line-height: 1.6; }
     .emoji { font-size: 60px; margin-bottom: 20px; }
@@ -43,18 +33,26 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const DEFAULT_DESCRIPTION = `生成一个简洁的着陆页，包含以下元素：
-- 标题: {{title=欢迎到来}}
-- 副标题: {{subtitle=这是一个示例页面}}
-- 主色调: {{color=#6366f1}}
-- 描述文字: {{description=在这里输入你的内容}}`;
+interface ExtractedVariable {
+  name: string;
+  type: 'text' | 'color' | 'number' | 'textarea';
+  label: string;
+  defaultValue: string;
+}
 
 export default function HtmlPreviewPage() {
-  const [html, setHtml] = useState(DEFAULT_HTML);
-  const [description, setDescription] = useState(DEFAULT_DESCRIPTION);
-  const [variables, setVariables] = useState<Variable[]>([]);
+  const [description, setDescription] = useState('');
+  const [optimizedDescription, setOptimizedDescription] = useState('');
+  const [extractedVariables, setExtractedVariables] = useState<ExtractedVariable[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const [html, setHtml] = useState(DEFAULT_HTML);
 
+  // Step state
+  const [currentStep, setCurrentStep] = useState<'input' | 'confirm' | 'generate'>('input');
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
+
+  // Layout state
   const [splitRatio, setSplitRatio] = useState(42);
   const [isDragging, setIsDragging] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -82,21 +80,6 @@ export default function HtmlPreviewPage() {
       document.documentElement.dataset.theme = resolved;
     }
   }, []);
-
-  // Parse variables
-  useEffect(() => {
-    const vars = parseVariables(description);
-    setVariables(vars);
-    setParamValues(prev => {
-      const updated = { ...prev };
-      vars.forEach((v: Variable) => {
-        if (v.defaultValue && !updated[v.name]) {
-          updated[v.name] = v.defaultValue;
-        }
-      });
-      return updated;
-    });
-  }, [description]);
 
   // Drag logic
   const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
@@ -154,6 +137,52 @@ export default function HtmlPreviewPage() {
     setParamValues(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleOptimize = async () => {
+    if (!description.trim()) {
+      setOptimizeError('请先输入功能描述');
+      return;
+    }
+    setIsOptimizing(true);
+    setOptimizeError(null);
+    try {
+      const res = await fetch('/ideas/html-preview/api/describe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description }),
+      });
+      if (!res.ok) throw new Error(`请求失败: ${res.status}`);
+      const data = await res.json();
+      setOptimizedDescription(data.optimizedDescription);
+      setExtractedVariables(data.variables || []);
+      // Initialize param values
+      const initial: Record<string, string> = {};
+      (data.variables || []).forEach((v: ExtractedVariable) => {
+        initial[v.name] = v.defaultValue || '';
+      });
+      setParamValues(initial);
+      setCurrentStep('confirm');
+    } catch (err) {
+      setOptimizeError((err as Error).message || '优化失败');
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const handleGenerate = () => {
+    if (!optimizedDescription.trim()) {
+      return;
+    }
+    setCurrentStep('generate');
+  };
+
+  const handleBack = () => {
+    setCurrentStep('input');
+  };
+
+  const handleEditDescription = () => {
+    setCurrentStep('input');
+  };
+
   const bgStyle = {
     background: `linear-gradient(to bottom right, var(--bg-gradient-start), var(--bg-gradient-mid), var(--bg-gradient-end))`,
   };
@@ -183,10 +212,30 @@ export default function HtmlPreviewPage() {
         </div>
       </div>
 
+      {/* Step indicator */}
+      <div className="max-w-[1600px] mx-auto px-4 pb-4">
+        <div className="flex items-center gap-2 text-sm">
+          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'input' ? 'bg-indigo-500 text-white' : 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300'}`}>
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">{currentStep === 'input' ? '1' : '✓'}</span>
+            输入描述
+          </span>
+          <span className="text-gray-300">→</span>
+          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'confirm' ? 'bg-indigo-500 text-white' : currentStep === 'generate' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-300' : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'}`}>
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">{currentStep === 'generate' ? '✓' : '2'}</span>
+            确认变量
+          </span>
+          <span className="text-gray-300">→</span>
+          <span className={`flex items-center gap-1 px-3 py-1 rounded-full ${currentStep === 'generate' ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-400 dark:bg-slate-700 dark:text-slate-500'}`}>
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">3</span>
+            生成预览
+          </span>
+        </div>
+      </div>
+
       {/* Main dual-panel layout */}
       <div
         className={`max-w-[1600px] mx-auto px-4 pb-6 ${isMobile ? 'flex flex-col' : 'relative'}`}
-        style={isMobile ? {} : { height: 'calc(100vh - 100px)' }}
+        style={isMobile ? {} : { height: 'calc(100vh - 140px)' }}
       >
         {/* Left Panel */}
         <div
@@ -198,57 +247,134 @@ export default function HtmlPreviewPage() {
           style={isMobile ? { height: '50vh' } : { width: `${splitRatio}%`, height: '100%' }}
         >
           <div className="p-4 space-y-4">
-            {/* Description Input */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">📖 功能描述</h3>
-                <span className="text-xs text-gray-400 dark:text-slate-500">
-                  使用 {'{{变量名}}'} 定义变量
-                </span>
+
+            {/* Step 1: Input */}
+            {currentStep === 'input' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">📝 用自然语言描述你想要的界面</h3>
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={6}
+                    placeholder="例如：创建一个个人名片页面，包含姓名、职位、联系方式，有渐变背景和一个好看的头像占位区域"
+                    className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                  />
+                </div>
+                {optimizeError && (
+                  <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">
+                    {optimizeError}
+                  </div>
+                )}
+                <button
+                  onClick={handleOptimize}
+                  disabled={isOptimizing || !description.trim()}
+                  className="w-full py-3 bg-indigo-500 hover:bg-indigo-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                >
+                  {isOptimizing ? (
+                    <>
+                      <span className="animate-spin">⏳</span>
+                      AI 优化中...
+                    </>
+                  ) : (
+                    <>✨ 优化描述 & 提取变量</>
+                  )}
+                </button>
               </div>
-              <textarea
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                rows={4}
-                placeholder="描述你想要生成的HTML页面..."
-                className="w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-800 dark:text-slate-200 placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-              />
-            </div>
+            )}
 
-            {/* Variable Parser */}
-            <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
-              <VariableParser description={description} onVariablesChange={setVariables} />
-            </div>
+            {/* Step 2: Confirm variables */}
+            {currentStep === 'confirm' && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">🤖 AI 优化后的描述</h3>
+                    <button onClick={handleEditDescription} className="text-xs text-indigo-500 hover:text-indigo-700">
+                      修改描述
+                    </button>
+                  </div>
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800 text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap">
+                    {optimizedDescription}
+                  </div>
+                </div>
 
-            {/* Param Generator */}
-            <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
-              <ParamGenerator variables={variables} values={paramValues} onChange={handleParamChange} />
-            </div>
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">⚙️ 提取的参数</h3>
+                  {extractedVariables.length === 0 ? (
+                    <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 text-sm text-gray-500 text-center">
+                      未提取到参数，将生成静态页面
+                    </div>
+                  ) : (
+                    <ParamGenerator
+                      variables={extractedVariables.map(v => ({
+                        name: v.name,
+                        type: v.type,
+                        label: v.label,
+                        defaultValue: v.defaultValue,
+                      }))}
+                      values={paramValues}
+                      onChange={handleParamChange}
+                    />
+                  )}
+                </div>
 
-            {/* Html Generator */}
-            <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
-              <HtmlGenerator
-                description={description}
-                params={paramValues}
-                onHtmlChange={setHtml}
-              />
-            </div>
-
-            {/* Quick Reference */}
-            <details className="group">
-              <summary className="text-xs text-gray-400 dark:text-slate-500 cursor-pointer hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
-                📚 变量语法参考
-              </summary>
-              <div className="mt-2 p-2.5 bg-slate-100 dark:bg-slate-900 rounded-lg text-xs font-mono text-gray-600 dark:text-slate-400 space-y-1">
-                <p><code className="text-indigo-500">{'{{name}}'}</code> — 文本变量</p>
-                <p><code className="text-indigo-500">{'{{name:text}}'}</code> — 指定类型</p>
-                <p><code className="text-indigo-500">{'{{name=default}}'}</code> — 带默认值</p>
-                <p><code className="text-indigo-500">{'{{name:color=#ff0000}}'}</code> — 颜色+默认值</p>
-                <p className="pt-1 border-t border-gray-200 dark:border-slate-700">
-                  类型: <span className="text-gray-500">text, color, number, textarea</span>
-                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBack}
+                    className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-700 dark:text-slate-300 font-medium rounded-xl transition-colors"
+                  >
+                    ← 返回修改
+                  </button>
+                  <button
+                    onClick={handleGenerate}
+                    className="flex-1 py-3 bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    🚀 生成 HTML
+                  </button>
+                </div>
               </div>
-            </details>
+            )}
+
+            {/* Step 3: Generate (show generator) */}
+            {currentStep === 'generate' && (
+              <div className="space-y-4">
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-100 dark:border-green-800">
+                  <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-1">✅ 准备就绪</p>
+                  <p className="text-xs text-green-600 dark:text-green-400">参数已确认，点击下方按钮开始生成 HTML</p>
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">🤖 AI 优化后的描述</h3>
+                  <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700 text-sm text-gray-600 dark:text-slate-400 whitespace-pre-wrap">
+                    {optimizedDescription}
+                  </div>
+                </div>
+
+                {extractedVariables.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">⚙️ 当前参数值</h3>
+                    <ParamGenerator
+                      variables={extractedVariables.map(v => ({
+                        name: v.name,
+                        type: v.type,
+                        label: v.label,
+                        defaultValue: v.defaultValue,
+                      }))}
+                      values={paramValues}
+                      onChange={handleParamChange}
+                    />
+                  </div>
+                )}
+
+                <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
+                  <HtmlGenerator
+                    description={optimizedDescription}
+                    params={paramValues}
+                    onHtmlChange={setHtml}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -265,7 +391,7 @@ export default function HtmlPreviewPage() {
             onMouseDown={handleDividerMouseDown}
             onTouchStart={handleDividerTouchStart}
           >
-            <div className="w-1 h-12 rounded-full bg-gray-300 dark:bg-slate-600 group-hover:bg-indigo-400 transition-colors" />
+            <div className="w-1 h-12 rounded-full bg-gray-300 dark:bg-slate-600" />
           </div>
         )}
 
