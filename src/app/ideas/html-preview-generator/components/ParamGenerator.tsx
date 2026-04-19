@@ -9,8 +9,6 @@ interface ParamGeneratorProps {
   uniqueNames: string[];
   duplicates: string[];
   onJsonChange?: (json: string) => void;
-  /** 上报用户输入的实际值，供变量绑定使用 */
-  onValuesChange?: (values: Record<string, string | number | boolean>) => void;
 }
 
 type ControlType = InferredType | "text" | "number" | "password" | "email" | "url" | "boolean" | "select";
@@ -43,7 +41,7 @@ const TYPE_COLORS: Record<ControlType, string> = {
   select: "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200",
 };
 
-export default function ParamGenerator({ variables, uniqueNames, duplicates, onJsonChange, onValuesChange }: ParamGeneratorProps) {
+export default function ParamGenerator({ variables, uniqueNames, duplicates, onJsonChange }: ParamGeneratorProps) {
   const [controls, setControls] = useState<Control[]>(() =>
     defaultControls(uniqueNames).map((c) => ({
       ...c,
@@ -52,16 +50,7 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
     }))
   );
 
-  // 用户输入的值 state，用于变量绑定
-  const [values, setValues] = React.useState<Record<string, string | number | boolean>>(() => {
-    const init: Record<string, string | number | boolean> = {};
-    for (const c of defaultControls(uniqueNames)) {
-      init[c.name] = c.default;
-    }
-    return init;
-  });
-
-  // 同步 controls 数量与 variables 变化，同时同步默认值到 values
+  // 同步 controls 数量与 variables 变化
   React.useEffect(() => {
     setControls((prev) => {
       const defaults = defaultControls(uniqueNames);
@@ -77,45 +66,12 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
       });
       return newControls;
     });
-
-    // 同步 values：新增变量用默认值，保留已有变量的值
-    setValues((prev) => {
-      const next: Record<string, string | number | boolean> = {};
-      for (const name of uniqueNames) {
-        const ctrl = defaultControls(uniqueNames).find((c) => c.name === name);
-        next[name] = name in prev ? prev[name] : (ctrl?.default ?? "");
-      }
-      return next;
-    });
   }, [uniqueNames.length]);
 
   const updateControl = useCallback((name: string, patch: Partial<Control>) => {
     setControls((prev) =>
       prev.map((c) => (c.name === name ? { ...c, ...patch } : c))
     );
-  }, []);
-
-  // 更新用户输入值
-  const updateValue = useCallback(
-    (name: string, value: string | number | boolean) => {
-      setValues((prev) => {
-        const next = { ...prev, [name]: value };
-        onValuesChange?.(next);
-        return next;
-      });
-    },
-    [onValuesChange]
-  );
-
-  // 初始时上报默认值
-  React.useEffect(() => {
-    const init: Record<string, string | number | boolean> = {};
-    for (const c of defaultControls(uniqueNames)) {
-      init[c.name] = c.default;
-    }
-    setValues(init);
-    onValuesChange?.(init);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 转换为 ParamPreview 格式
@@ -296,6 +252,7 @@ export default function ParamGenerator({ variables, uniqueNames, duplicates, onJ
                 {ctrl.label}
               </label>
 
+              {/* 根据类型渲染对应输入控件 */}
               {ctrl.type === "boolean" ? (
                 <button
                   onClick={() => updateValue(ctrl.name, !values[ctrl.name])}
