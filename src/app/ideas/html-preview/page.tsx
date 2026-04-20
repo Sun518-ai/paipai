@@ -46,7 +46,6 @@ export default function HtmlPreviewPage() {
   const [extractedVariables, setExtractedVariables] = useState<ExtractedVariable[]>([]);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [html, setHtml] = useState(DEFAULT_HTML);
-  const [renderedHtml, setRenderedHtml] = useState(DEFAULT_HTML);
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handlePreviewChunk = useCallback((chunk: string) => {
@@ -137,17 +136,6 @@ export default function HtmlPreviewPage() {
       document.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isDragging]);
-
-  // Re-render template with current param values - skip during generation
-  useEffect(() => {
-    if (!html || html === DEFAULT_HTML || isGenerating) return;
-    let result = html;
-    for (const [key, value] of Object.entries(paramValues)) {
-      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
-      result = result.replace(regex, value || '');
-    }
-    setRenderedHtml(result);
-  }, [html, paramValues, isGenerating]);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
@@ -431,11 +419,15 @@ export default function HtmlPreviewPage() {
                     {isExporting ? '导出中...' : '📦 导出 ZIP'}
                   </button>
                 )}
-                <span className="text-xs text-gray-400 dark:text-slate-500">{renderedHtml.length} 字符</span>
+                <span className="text-xs text-gray-400 dark:text-slate-500">{html.length} 字符</span>
               </div>
             </div>
-            <div className="h-[calc(100%-2rem)]">
-              <HtmlPreview html={renderedHtml} />
+            <div className="h-full overflow-auto">
+              <HtmlPreview
+                html={html}
+                params={paramValues}
+                substituteParams={true}
+              />
             </div>
           </div>
         </div>

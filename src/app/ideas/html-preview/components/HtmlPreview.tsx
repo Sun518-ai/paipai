@@ -1,17 +1,33 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
+import AutoHeightIframe from './AutoHeightIframe';
 
 interface HtmlPreviewProps {
   html: string;
+  /** Optional params to substitute into the template before preview */
+  params?: Record<string, string>;
+  /** Render template with params substituted (default true) */
+  substituteParams?: boolean;
 }
 
-export default function HtmlPreview({ html }: HtmlPreviewProps) {
+export default function HtmlPreview({ html, params = {}, substituteParams = true }: HtmlPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const codeRef = useRef<HTMLElement>(null);
+
+  // Apply param substitution to get rendered HTML for preview
+  const renderedHtml = useCallback(() => {
+    if (!html || !substituteParams) return html;
+    let result = html;
+    for (const [key, value] of Object.entries(params)) {
+      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
+      result = result.replace(regex, value ?? '');
+    }
+    return result;
+  }, [html, params, substituteParams])();
 
   // Highlight code when switching to code tab
   useEffect(() => {
@@ -31,16 +47,16 @@ export default function HtmlPreview({ html }: HtmlPreviewProps) {
   };
 
   return (
-    <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
+    <div className="border border-gray-200 dark:border-slate-700 rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm">
       {/* Tab Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+      <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-slate-800/80 border-b border-gray-200 dark:border-slate-700">
         <div className="flex gap-1">
           <button
             onClick={() => setActiveTab('preview')}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'preview'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
             }`}
           >
             👁️ 预览
@@ -49,8 +65,8 @@ export default function HtmlPreview({ html }: HtmlPreviewProps) {
             onClick={() => setActiveTab('code')}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'code'
-                ? 'bg-white text-indigo-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
             }`}
           >
             📄 代码
@@ -60,8 +76,8 @@ export default function HtmlPreview({ html }: HtmlPreviewProps) {
           onClick={handleCopy}
           className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
             copied
-              ? 'bg-green-100 text-green-700'
-              : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+              : 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50'
           }`}
         >
           {copied ? '✅ 已复制' : '📋 复制代码'}
@@ -69,16 +85,14 @@ export default function HtmlPreview({ html }: HtmlPreviewProps) {
       </div>
 
       {/* Content */}
-      <div className="h-[500px]">
+      <div className="min-h-[200px] max-h-[70vh] overflow-auto">
         {activeTab === 'preview' ? (
-          <iframe
-            srcDoc={html || '<html><body style="display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f9fafb;font-family:system-ui;"><p style="color:#9ca3af;">预览区域</p></body></html>'}
-            sandbox="allow-scripts allow-modals"
-            title="HTML Preview"
-            className="w-full h-full border-0"
+          <AutoHeightIframe
+            html={renderedHtml}
+            showLoader={true}
           />
         ) : (
-          <div className="h-full overflow-auto bg-gray-50">
+          <div className="overflow-auto bg-gray-50 dark:bg-slate-900">
             <pre className="p-4 m-0">
               <code ref={codeRef} className="hljs text-sm">
                 {html || '// 代码将在这里显示'}
