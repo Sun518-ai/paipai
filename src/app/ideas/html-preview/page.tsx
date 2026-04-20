@@ -358,7 +358,8 @@ export default function HtmlPreviewPage() {
                 <div className="p-3 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
                   <HtmlGenerator
                     description={optimizedDescription}
-                    params={paramValues}
+                    variables={extractedVariables}
+                    paramValues={paramValues}
                     onHtmlChange={setHtml}
                     onChunk={handlePreviewChunk}
                     onComplete={handleGenerateComplete}
@@ -425,8 +426,8 @@ export default function HtmlPreviewPage() {
             <div className="h-full overflow-auto">
               <HtmlPreview
                 html={html}
-                params={paramValues}
-                substituteParams={true}
+                variables={extractedVariables}
+                useDefaultValues={true}
               />
             </div>
           </div>

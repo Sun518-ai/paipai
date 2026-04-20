@@ -5,29 +5,41 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
 import AutoHeightIframe from './AutoHeightIframe';
 
-interface HtmlPreviewProps {
-  html: string;
-  /** Optional params to substitute into the template before preview */
-  params?: Record<string, string>;
-  /** Render template with params substituted (default true) */
-  substituteParams?: boolean;
+interface ExtractedVariable {
+  name: string;
+  type: string;
+  label: string;
+  defaultValue: string;
 }
 
-export default function HtmlPreview({ html, params = {}, substituteParams = true }: HtmlPreviewProps) {
+interface HtmlPreviewProps {
+  html: string;
+  /** Extracted variable definitions - used to get defaultValue for substitution */
+  variables?: ExtractedVariable[];
+  /** Render template with default values from variables (default true) */
+  useDefaultValues?: boolean;
+}
+
+export default function HtmlPreview({
+  html,
+  variables = [],
+  useDefaultValues = true,
+}: HtmlPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   const codeRef = useRef<HTMLElement>(null);
 
-  // Apply param substitution to get rendered HTML for preview
+  // Apply param substitution using defaultValue from variables
   const renderedHtml = useCallback(() => {
-    if (!html || !substituteParams) return html;
+    if (!html) return html;
     let result = html;
-    for (const [key, value] of Object.entries(params)) {
-      const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g');
-      result = result.replace(regex, value ?? '');
+    for (const v of variables) {
+      const regex = new RegExp(`\\{\\{\\s*${v.name}\\s*\\}\\}`, 'g');
+      const value = useDefaultValues ? (v.defaultValue ?? '') : '';
+      result = result.replace(regex, value);
     }
     return result;
-  }, [html, params, substituteParams])();
+  }, [html, variables, useDefaultValues])();
 
   // Highlight code when switching to code tab
   useEffect(() => {

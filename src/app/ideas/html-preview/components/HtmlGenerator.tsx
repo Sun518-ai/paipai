@@ -2,9 +2,19 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 
+interface Variable {
+  name: string;
+  type: string;
+  label: string;
+  defaultValue: string;
+}
+
 interface HtmlGeneratorProps {
   description: string;
-  params: Record<string, unknown>;
+  /** Extracted variable definitions - used for consistent placeholder naming */
+  variables: Variable[];
+  /** Current param values from form - used for generating with user values */
+  paramValues: Record<string, string>;
   onHtmlChange?: (html: string) => void;
   /** Called after each chunk with accumulated cleaned HTML */
   onChunk?: (html: string) => void;
@@ -14,7 +24,8 @@ interface HtmlGeneratorProps {
 
 export default function HtmlGenerator({
   description,
-  params,
+  variables,
+  paramValues,
   onHtmlChange,
   onChunk,
   onComplete,
@@ -59,7 +70,7 @@ export default function HtmlGenerator({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ description, params }),
+        body: JSON.stringify({ description, variables, paramValues }),
         signal: abortControllerRef.current.signal,
       });
 
@@ -172,7 +183,7 @@ export default function HtmlGenerator({
       setIsLoading(false);
       onComplete?.();
     }
-  }, [description, params, onHtmlChange, onComplete]);
+  }, [description, paramValues, onHtmlChange, onComplete]);
 
   // Cleanup on unmount
   useEffect(() => {
